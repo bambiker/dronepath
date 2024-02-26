@@ -1,0 +1,16 @@
+<html>
+<head>
+<title>Find the drone optimal height</title>
+</head>
+<body>
+write your start point and destination and we will tell you what height is optimal for you<br>
+<br>
+start location<br>
+destination<br>
+horizontal speed<br>
+vertical speed<br>
+date and time (now)<br>
+calculate<br>
+  so far you save yy minutes<br>
+</body>
+</html>
