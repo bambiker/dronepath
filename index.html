@@ -1,10 +1,7 @@
 <html>
 <head>
 <title>Find the drone optimal height</title>
-    <script src="https://polyfill.io/v3/polyfill.min.js?features=default"></script>
 
-    <link rel="stylesheet" type="text/css" href="./style.css" />
-    <script type="module" src="./index.js"></script>
 </head>
 <body>
 write your start point and destination and we will tell you what height is optimal for you<br>
@@ -15,22 +12,28 @@ horizontal speed<br>
 vertical speed<br>
 date and time (now)<br>
 calculate<br>
-  so far you save y1y minutes<br>
+  so far you save y2y minutes<br>
+<button onclick="getLocation()">Try It</button>
 
-    <div id="map"></div>
+<p id="demo"></p>
 
-    <!-- 
-      The `defer` attribute causes the callback to execute after the full HTML
-      document has been parsed. For non-blocking uses, avoiding race conditions,
-      and consistent behavior across browsers, consider loading using Promises.
-      See https://developers.google.com/maps/documentation/javascript/load-maps-js-api
-      for more information.
-      -->
-    <script
-      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyB41DRUbKWJHPxaFjMAwdrzWzbVKartNGg&callback=initMap&v=weekly"
-      defer
-    ></script>
-  
+<script>
+const x = document.getElementById("demo");
+
+function getLocation() {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(showPosition);
+  } else { 
+    x.innerHTML = "Geolocation is not supported by this browser.";
+  }
+}
+
+function showPosition(position) {
+  x.innerHTML = "Latitude: " + position.coords.latitude + 
+  "<br>Longitude: " + position.coords.longitude;
+}
+</script>
+
 </body>
 </html>
 
