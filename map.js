@@ -14,7 +14,7 @@ function initMap() {
     //Map options.
     var options = {
       center: centerOfMap, //Set center.
-      zoom: 7 //The zoom value.
+      zoom: 15 //The zoom value.
     };
 
     //Create the map object.
