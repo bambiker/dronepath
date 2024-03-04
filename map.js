@@ -44,7 +44,13 @@ function initMap() {
         markerLocation();
     });
 }
-        
+
+function moveToLocation(lat, lng){
+  const center = new google.maps.LatLng(lat, lng);
+  // using global variable:
+  window.map.panTo(center);
+}
+
 //This function will get the marker's current location and then add the lat/long
 //values to our textfields so that we can save the location.
 function markerLocation(){
