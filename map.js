@@ -57,8 +57,17 @@ function markerLocation(){
     //Get location.
     var currentLocation = marker.getPosition();
     //Add lat and lng values to a field that we can save.
+    if(document.getElementById('lat').value==="")    
+        {
     document.getElementById('lat').value = currentLocation.lat(); //latitude
     document.getElementById('lng').value = currentLocation.lng(); //longitude
+        }
+        else
+        {
+    document.getElementById('lat2').value = currentLocation.lat(); //latitude
+    document.getElementById('lng2').value = currentLocation.lng(); //longitude
+        }
+            
 }
         
         
