@@ -45,6 +45,7 @@ function initMap() {
     });
 }
 
+
 function moveToLocation(lat, lng){
   const center = new google.maps.LatLng(lat, lng);
   // using global variable:
@@ -61,11 +62,31 @@ function markerLocation(){
         {
     document.getElementById('lat').value = currentLocation.lat(); //latitude
     document.getElementById('lng').value = currentLocation.lng(); //longitude
+
+     var location = new google.maps.LatLng(currentLocation.lat(), currentLocation.lng());    
+     var map = new google.maps.Map(map_canvas, map_options);
+           
+     new google.maps.Marker({
+        position: location,
+        map: map
+    });
+        
         }
         else
         {
     document.getElementById('lat2').value = currentLocation.lat(); //latitude
     document.getElementById('lng2').value = currentLocation.lng(); //longitude
+
+        
+     var location = new google.maps.LatLng(currentLocation.lat(), currentLocation.lng());    
+     var map = new google.maps.Map(map_canvas, map_options);
+           
+     new google.maps.Marker({
+        position: location,
+        map: map
+    });
+        
+        
         }
             
 }
