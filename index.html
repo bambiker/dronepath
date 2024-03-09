@@ -1,57 +1,84 @@
 <html>
 <head>
-<title>Find the drone optimal height</title>
-        <script type="text/javascript" src="https://maps.googleapis.com/maps/api/js"></script>
-       <style type="text/css">
-          #map{ width:700px; height: 500px; }
-        </style>
+    <title>Find the drone optimal height</title>
+    <script type="text/javascript" src="https://maps.googleapis.com/maps/api/js"></script>
+    <style type="text/css">
+        #map{ width:700px; height: 500px; }
+    </style>
 </head>
 <body>
-write your start point and destination and we will tell you what height is optimal for you<br>
-        This way, you will save battery or you can fly for longer distances<br>
-        This is a good practice for delivery UAV<br>
-<br>
-start location<br>
-destination<br>
-horizontal speed<br>
-vertical speed<br>
-date and time (now)<br>
-calculate<br>
-  so far you save y3y minutes<br>
-<button onclick="getLocation()">My location</button>
+    write your start point and destination and we will tell you what height is optimal for you<br>
+    This way, you will save battery or you can fly for longer distances<br>
+    This is a good practice for delivery UAV<br>
+    <br>
+    Speed taken from https://www.dji.com/global/mavic-3-classic/specs<br>
+    horizontal speed: 21 m/s (with load, the speed reduce)<br>
+    Ascent speed: 8 m/s<br>
+    Descent speed: 6 m/s<br>
+    using current time<br>
+    <script>
+       function getLocation() {
+           if (navigator.geolocation) {
+               navigator.geolocation.getCurrentPosition(showPosition);
+              }
+           else {
+                x.innerHTML = "Geolocation is not supported by this browser.";
+                }
+       }
+   
+       function getHeight() {
+//           const apiUrl = 'https://api.open-meteo.com/v1/forecast?latitude='+document.getElementById('lat').value+'&longitude='+document.getElementById('lng').value+'&hourly=wind_speed_10m,wind_speed_80m,wind_speed_120m,wind_speed_180m,wind_direction_10m,wind_direction_80m,wind_direction_120m,wind_direction_180m&forecast_days=1';
+//           fetch(apiUrl)
+//           .then(response => {
+//                if (!response.ok) {
+//                    if (response.status === 404) {
+//                        throw new Error('Data not found');
+//                  } else if (response.status === 500) {
+//                        throw new Error('Server error');
+//                  } else {
+//                        throw new Error('Network response was not ok');
+//                         }
+//                  }
+//                return response.json();
+//              })
+//           .then(data => {
+//                 myjson = JSON.stringify(data, null, 2);
+//                 x.textContent = myjson
+//
+//                 const d = new Date();
+// let hour = d.getUTCHours();
+//var mydata = JSON.parse(myjson);
+//                 ws10=mydata.hourly.wind_speed_10m[hour-1]; //array start at zero
+//                 ws80=mydata.hourly.wind_speed_80m[hour-1]; //array start at zero
+//                 ws120=mydata.hourly.wind_speed_120m[hour-1]; //array start at zero
+//                 xa.textContent = ws80
+//    
+//                  })
+//          .catch(error => {
+//                 console.error('Error:', error);
+//                 });
+//          x.innerHTML = "API.";
+//          xa.innerHTML = "API2.";
+          xa.innerHTML = calcHeight();
+      }
 
-<p id="demo"></p>
 
-<script>
-const x = document.getElementById("demo");
-
-function getLocation() {
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(showPosition);
-  } else { 
-    x.innerHTML = "Geolocation is not supported by this browser.";
-  }
-}
-
-function showPosition(position) {
-  x.innerHTML = "Latitude: " + position.coords.latitude + 
-  "<br>Longitude: " + position.coords.longitude;
-     moveToLocation(position.coords.latitude,  position.coords.longitude)
-
+      function showPosition(position) {
+              //x.innerHTML = "Latitude: " + position.coords.latitude +  "<br>Longitude: " + position.coords.longitude;
+              moveToLocation(position.coords.latitude,  position.coords.longitude)
+              setstartloc(position.coords.latitude,  position.coords.longitude)
 }
 </script>
 
-
-
-
-
-  
-        <h1>Select a location!</h1>
+ 
+        <h1>Select a start and destination locations!</h1>
+<button onclick="getLocation()">Start with my location</button>
+       
         <p>Click on a location on the map to select it. Drag the marker to change location.</p>
-        
+       
         <!--map div-->
         <div id="map"></div>
-        
+       
         <!--our form-->
         <h2>Start Location</h2>
         <form method="post">
@@ -63,18 +90,21 @@ function showPosition(position) {
             <input type="text" id="lat2" readonly="yes"><br>
             <input type="text" id="lng2" readonly="yes">
         </form>
-        
+       
         <script type="text/javascript" src="map.js"></script>
-<br>
-        DJI vertical speed<br>
-https://www.dji.com/global/mavic-3-classic/specs<br>
-https://www.dji.com/global/mini-4-pro/specs<br>
-<br>
-<br>
-<iframe src="https://docs.google.com/forms/d/e/1FAIpQLScucpTGf_6hN_e8NQMgTJqoPX7q7B1HavnFdywewEtgMXFuNA/viewform?embedded=true" width="640" height="642" frameborder="0" marginheight="0" marginwidth="0">Loading…</iframe>
-
-        
-</body>
+        <br>
+<button onclick="getHeight()">calculate height</button> between 10m,80m,120m
+        <p id="demo"></p>
+        <p id="demoa"></p>
+        <script>
+            const x = document.getElementById("demo");
+            const xa = document.getElementById("demoa");
+        </script>
+so far you save y3y minutes<br>
+180<br>
+90 270<br>
+0/360<br>
+        <iframe src="https://docs.google.com/forms/d/e/1FAIpQLScucpTGf_6hN_e8NQMgTJqoPX7q7B1HavnFdywewEtgMXFuNA/viewform?embedded=true" width="640" height="842" frameborder="0" marginheight="0" marginwidth="0">Loading…</iframe>
+       
+    </body>
 </html>
-
-
