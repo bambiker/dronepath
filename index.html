@@ -1,3 +1,80 @@
+<html>
+<head>
+    <title>Calculator for drone optimal height</title>
+
+    <script type="text/javascript" src="https://maps.googleapis.com/maps/api/js"></script>
+    <style type="text/css">
+        #map{ width:700px; height: 500px; }
+    </style>
+   
+   
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-5SL33P5MG7"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-5SL33P5MG7');
+</script>
+   
+</head>
+<body>
+<h1>Calculator for the optimal height to fly a delivery UAV</h1>
+    * Write your start point and destination and we will tell you what travel height is optimal for you.<br>
+    * This way, Food delivery will be better(faster, fresh, warm), you will save battery or you can fly for longer distances.<br>
+    * We should fly above 30m to reduce noise. (more accurate data can be found at "Determination of optimal flight altitude to minimise acoustic drone disturbance to wildlife using species audiograms
+" https://doi.org/10.1111/2041-210X.13691)<br>
+    * Choosing the flight height is mainly important for long distance, high drag coefficient and when you go to/back with the wind direction.<br>
+    * Drag is good, if you fly with knowing the wind.<br>
+    <br>
+    Drone speed is taken from https://www.dji.com/global/mavic-3-classic/specs<br>
+        <form method="post">
+           horizontal speed: <input type="text" id="hor" value="21"> m/s <br>
+           Ascent speed:  <input type="text" id="asc" value="8"> m/s<br>
+           Descent speed:  <input type="text" id="des" value="6"> m/s<br>
+           Drag coefficient:  <input type="text" id="drag" value="1.0"><br>
+           payload coefficient:  <input type="text" id="payload" value="2"> (2 means that you carry a weight equal to the drone weight, thus the speed will cut to half)<br>
+        </form>
+
+    using current time<br>
+    <script>
+       function getLocation() {
+           if (navigator.geolocation) {
+               navigator.geolocation.getCurrentPosition(showPosition);
+              }
+           else {
+                x.innerHTML = "Geolocation is not supported by this browser.";
+                }
+       }
+   
+       function getHeight() {
+        calcHeight();      
+var x = document.getElementById("result");
+        x.style.display = "block";
+
+      }
+
+
+      function showPosition(position) {
+              //x.innerHTML = "Latitude: " + position.coords.latitude +  "<br>Longitude: " + position.coords.longitude;
+              moveToLocation(position.coords.latitude,  position.coords.longitude)
+              setstartloc(position.coords.latitude,  position.coords.longitude)
+}
+</script>
+
+  <br>
+        <b>Select a start and destination locations!</b><br>
+
+<button onclick="getLocation()">Start with my location</button>
+       
+        Click on a location on the map to select it. Drag the marker to change location.<br><br>
+
+       
+        <!--map div-->
+        <div id="map"></div>
+               
+        <script type="text/javascript" src="map.js"></script>
  <br>
 <button onclick="getHeight()">calculate height</button> between 20m-120m<br>
  <div id="result" style="display:none">
@@ -18,8 +95,6 @@ Choosing optimal height is <b>better in <span id="savesec" ></span> seconds </b>
 Wind speed is taken from <a href="http://open-meteo.com" target="_blank">open-meteo.com<br>
 
 <a href="https://docs.google.com/forms/d/e/1FAIpQLScucpTGf_6hN_e8NQMgTJqoPX7q7B1HavnFdywewEtgMXFuNA/viewform?usp=sf_link" target="_blank">Contact us for questions and improvement suggestions</a><br>
-
        
     </body>
 </html>
-
