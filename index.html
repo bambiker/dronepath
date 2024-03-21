@@ -1,99 +1,27 @@
-<html>
-<head>
-    <title>Calculator for drone optimal height</title>
-    <script type="text/javascript" src="https://maps.googleapis.com/maps/api/js"></script>
-    <style type="text/css">
-        #map{ width:700px; height: 500px; }
-    </style>
-    
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-5SL33P5MG7"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
 
-  gtag('config', 'G-5SL33P5MG7');
-</script>
-</head>
-<body>
-<h1>Calculator for the optimal height to fly a delivery UAV</h1>
-    write your start point and destination and we will tell you what travel height is optimal for you.<br>
-    This way, Food delivery will be better(faster, fresh, warm), you will save battery or you can fly for longer distances.<br>
-    We should fly above 30m to reduce noise.<br>
-    Choosing the flight height is mainly important for long distance, high drag coefficient and when you go to/back with the wind direction.<br>
-    <br>
-    Drone speed is taken from https://www.dji.com/global/mavic-3-classic/specs<br>
-        <form method="post">
-           horizontal speed: <input type="text" id="hor" value="21"> m/s <br>
-           Ascent speed:  <input type="text" id="asc" value="8"> m/s<br>
-           Descent speed:  <input type="text" id="des" value="6"> m/s<br>
-           Drag coefficient:  <input type="text" id="drag" value="0.6"><br>
-           payload coefficient:  <input type="text" id="payload" value="2"> (2 means that you carry a weight equal to the drone weight, thus the speed will cut to half)<br>
-        </form>
-    using current time<br>
-    <script>
-       function getLocation() {
-           if (navigator.geolocation) {
-               navigator.geolocation.getCurrentPosition(showPosition);
-              }
-           else {
-                x.innerHTML = "Geolocation is not supported by this browser.";
-                }
-       }
-   
-       function getHeight() {
-        calcHeight();
-      }
-
-
-      function showPosition(position) {
-              //x.innerHTML = "Latitude: " + position.coords.latitude +  "<br>Longitude: " + position.coords.longitude;
-              moveToLocation(position.coords.latitude,  position.coords.longitude)
-              setstartloc(position.coords.latitude,  position.coords.longitude)
-}
-</script>
-
-  <br>
-        <b>Select a start and destination locations!</b><br>
-<button onclick="getLocation()">Start with my location</button>
-       
-        Click on a location on the map to select it. Drag the marker to change location.<br><br>
        
         <!--map div-->
         <div id="map"></div>
-       
-        <!--our form-->
-        <b>Start Location</b>
-        <form method="post">
-            <input type="text" id="lat" readonly="yes"><br>
-            <input type="text" id="lng" readonly="yes">
-        </form>
-        <b>Destination Location</b>
-        <form method="post">
-            <input type="text" id="lat2" readonly="yes"><br>
-            <input type="text" id="lng2" readonly="yes">
-        </form>
-       
+               
         <script type="text/javascript" src="map.js"></script>
-
+ <br>
 <button onclick="getHeight()">calculate height</button> between 20m-120m<br>
- 
+ <div id="result" style="display:none">
 
-Height foreward: <span id="heightfore"> </span> m, height backward:<span id="heightback"> </span> m<br>
+<b>Height foreward: <span id="heightfore"> </span> m, height backward:<span id="heightback"> </span> m</b><br>
 Distance: <span id="distance" ></span> m<br>
 drone direction: <span id="dronedir"> </span>, wind direction @80m:<span id="winddir"> </span><br>
 180<br>
 90 270<br>
 0/360<br>
 time without wind for one direction @20m: <span id="timenowind" ></span> sec<br>
-time foreward @20 m: <span id="timefore20"> </span>sec , time backward @20 m:<span id="timeback20"> </span> sec<br>
-time foreward @80 m: <span id="timefore80"> </span>sec , time backward @80 m:<span id="timeback80"> </span> sec<br>
-time foreward @120 m: <span id="timefore120"> </span>sec , time backward @120 m:<span id="timeback120"> </span> sec<br>
-Choosing optimal height is better in <span id="savesec" ></span> seconds than traveling @20 m height on both direction, that can give you additional <span id="savemeters" ></span> meters<br>
-
+@20m <span id="ws20"> </span>m/s: time foreward: <span id="timefore20"> </span>sec , time backward:<span id="timeback20"> </span> sec<br>
+@80m <span id="ws80"> </span>m/s: time foreward :<span id="timefore80"> </span>sec , time backward:<span id="timeback80"> </span> sec<br>
+@120m <span id="ws120"> </span>m/s: time foreward: <span id="timefore120"> </span>sec , time backward:<span id="timeback120"> </span> sec<br>
+Choosing optimal height is <b>better in <span id="savesec" ></span> seconds </b> (out of <span id="totaltime20"> </span>) than traveling @20 m height on both direction<br>
+</div>
 <br>
-Wind speed is taken from open-meteo.com<br>
+Wind speed is taken from <a href="http://open-meteo.com" target="_blank">open-meteo.com<br>
 
 <a href="https://docs.google.com/forms/d/e/1FAIpQLScucpTGf_6hN_e8NQMgTJqoPX7q7B1HavnFdywewEtgMXFuNA/viewform?usp=sf_link" target="_blank">Contact us for questions and improvement suggestions</a><br>
 
