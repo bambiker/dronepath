@@ -13,6 +13,87 @@ var map; //Will contain map object.
 var marker = 0; ////Has the user plotted their location marker?
 var lat1,lat2, lng1, lng2;
 
+       
+//Function called to initialize / create the map.
+//This is called when the page has loaded.
+function initMap() {
+    //The center location of our map.
+    var centerOfMap = new google.maps.LatLng(40.375540905462294, -74.601920573035);
+
+    //Map options.
+    var options = {
+      center: centerOfMap, //Set center.
+      zoom: 15 //The zoom value.
+    };
+
+    //Create the map object.
+    map = new google.maps.Map(document.getElementById('map'), options);
+
+    //Listen for any clicks on the map.
+    google.maps.event.addListener(map, 'click', function(event) {                
+    //Get the location that the user clicked.
+    var clickedLocation = event.latLng;
+    //If the marker hasn't been added.
+    if(marker === 0){
+       //Create the marker.
+       marker1 = new google.maps.Marker({
+           position: clickedLocation,
+           label: "start",
+           map: map,
+           draggable: true //make it draggable
+            });
+       markerLocation(1);  
+       //Listen for drag events!
+       google.maps.event.addListener(marker1, 'dragend', function(event){
+           markerLocation(1);  
+  });
+        marker=1;
+    } else{
+        if(marker === 1){
+            //Create the marker.
+            marker2 = new google.maps.Marker({
+                position: clickedLocation,
+                label: "destination",
+                map: map,
+                draggable: true //make it draggable
+            });
+            markerLocation();
+            //Listen for drag events!
+            google.maps.event.addListener(marker2, 'dragend', function(event){
+                markerLocation(2);  
+           });
+   marker=2;
+        } else{
+            //Marker has already been added, so just change its location.
+            marker2.setPosition(clickedLocation);
+                markerLocation(2);  
+        }
+        }
+    });
+}
+
+
+function moveToLocation(lat, lng){
+  const center = new google.maps.LatLng(lat, lng);
+  // using global variable:
+  window.map.panTo(center);
+}
+
+function setstartloc(lat, long)
+{
+    if(marker === 0){ // new marker
+   marker1 = new google.maps.Marker({
+       position: { lat: lat, lng: long },
+       label: "start",
+       map: map,
+       draggable: true //make it draggable
+   });
+   //Listen for drag events!
+   google.maps.event.addListener(marker1, 'dragend', function(event){
+       markerLocation(1);  
+   });
+    marker=1;
+    var currentLocation = marker1.getPosition();  
     lat1 = currentLocation.lat(); //latitude
     lng1 = currentLocation.lng(); //longitude    
     }
@@ -30,7 +111,6 @@ function markerLocation(sd){
 var currentLocation = marker1.getPosition();  
 lat1 = currentLocation.lat(); //latitude
     lng1 = currentLocation.lng(); //longitude
-
         }
     else
         {
@@ -70,6 +150,7 @@ async function getJSON() {
 async function calcHeight() {
     const json = await this.getJSON();  // command waits until completion
 
+
          const d = new Date();
          let hour = d.getUTCHours();
 var mydata = JSON.stringify(json, null, 2);
@@ -85,7 +166,6 @@ ws10=json.hourly.wind_speed_10m[hour-1]/3.6; //array start at zero
     startlng=lng1;
     destlat=lat2;
     destlng=lng2;
-
     difflat=startlat-destlat;
     difflng=startlng-destlng;
     var dronedegrees = Math.atan2(difflng, difflat) * 180 / 3.14159265;
@@ -177,7 +257,6 @@ dist30max[i]=(3600-timeupdown[i])*(speedhorizontal+ws[i]*angle)/((speedhorizonta
     document.getElementById('totaltime20').innerHTML = travel20.toFixed(2)
 
     return;
-Hide quoted text
 
 }
 
