@@ -1,12 +1,31 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
     <title>Calculator for drone optimal height</title>
-
-    <script type="text/javascript" src="https://maps.googleapis.com/maps/api/js"></script>
-    <style type="text/css">
-        #map{ width:700px; height: 500px; }
-    </style>
    
+   
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""> </script>
+
+<style>
+html, body {
+height: 100%;
+margin: 1%;
+}
+.leaflet-container {
+height: 400px;
+width: 600px;
+max-width: 100%;
+max-height: 100%;
+}
+</style>
+   
+       
    
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-5SL33P5MG7"></script>
@@ -20,14 +39,16 @@
    
 </head>
 <body>
+
 <h1>Calculator for the optimal height to fly a delivery UAV</h1>
 
 <details>
 <summary>Why it's impoprtant</summary>
-    
+   
     * Write your start point and destination and we will tell you what travel height is optimal for you.<br>
     * This way, Food delivery will be better(faster, fresh, warm), you will save battery or you can fly for longer distances.<br>
     * When you fly often, for example in a delivery company, the efficiency will sum.<br>
+    * We allow you to fly even if there is a high wind warnings by knowing that high winds are not everywhere.<br>
     * We should fly above 30m to reduce noise.<br>
     * Choosing the flight height is mainly important for long distance, high drag coefficient and when you go to/back with the wind direction.<br>
     * Drag is good, if you fly with knowing the wind.<br>
@@ -47,16 +68,16 @@
 </details>
 <details>
 <summary>Research</summary>
-   * Payload effect https://www.tytorobotics.com/blogs/articles/how-does-drone-payload-affect-flight-time<br> https://www.researchgate.net/figure/UAV-weight-and-payload-vs-flight-time_fig3_337948739 <br>
-   * We should fly above 30m to reduce noise. (more accurate data can be found at "Determination of optimal flight altitude to minimise acoustic drone disturbance to wildlife using species audiograms
+    <b>Payload effect</b><br>* https://www.tytorobotics.com/blogs/articles/how-does-drone-payload-affect-flight-time<br>* https://www.researchgate.net/figure/UAV-weight-and-payload-vs-flight-time_fig3_337948739 <br>
+    <b>We should fly above 30m to reduce noise</b><br> "Determination of optimal flight altitude to minimise acoustic drone disturbance to wildlife using species audiograms
 " https://doi.org/10.1111/2041-210X.13691)<br>
-   * Drifting equations <br>
- Observing Boundary-Layer Winds from Hot-Air Balloon Flights 
+   <b>Drifting equations</b> <br>
+* Observing Boundary-Layer Winds from Hot-Air Balloon Flights
 IF, E., BRUIJN, S., HAAN, F. C. B., SCHREUR, B. W., & HOLTSLAG, A. A. (2016). Observing Boundary-Layer Winds from Hot-Air Balloon Flights. (a ~= 0.1 for drone
-after one minute drifts almost the speed of the wind)  <br>     
+after one minute drifts almost the speed of the wind)  <br>    
 </details>
 
-    using current time<br>
+
     <script>
        function getLocation() {
            if (navigator.geolocation) {
@@ -69,7 +90,7 @@ after one minute drifts almost the speed of the wind)  <br>
    
        function getHeight() {
         calcHeight();      
-var x = document.getElementById("result");
+        var x = document.getElementById("result");
         x.style.display = "block";
 
       }
@@ -91,24 +112,29 @@ var x = document.getElementById("result");
 
        
         <!--map div-->
-        <div id="map"></div>
+        <div id="map" style="width: 600px; height: 400px;"></div>
+
+<script>
+</script>
+
+
                
         <script type="text/javascript" src="map.js"></script>
  <br>
-<button onclick="getHeight()">calculate height</button>
+<button onclick="getHeight()">calculate height</button> For current time<br>
  <div id="result" style="display:none">
 
 <b>Travel foreward at <span id="heightfore"> </span> m, and backward at <span id="heightback"> </span> m</b>, (We only check between 20-120 meters)<br>
-Distance: <span id="distance" ></span> m<br>
-drone direction: <span id="dronedir"> </span>, wind direction @80m:<span id="winddir"> </span><br>
+Distance: <span id="distance" ></span> drone direction: <span id="dronedir"> </span> degrees<br>
+Direction rose<br>
 180<br>
 90 270<br>
 0/360<br>
 time without wind for one direction @20m: <span id="timenowind" ></span> sec<br>
-@20m <span id="ws20"> </span>m/s: time foreward: <span id="timefore20"> </span>sec , time backward:<span id="timeback20"> </span> sec<br>
-@80m <span id="ws80"> </span>m/s: time foreward :<span id="timefore80"> </span>sec , time backward:<span id="timeback80"> </span> sec<br>
-@120m <span id="ws120"> </span>m/s: time foreward: <span id="timefore120"> </span>sec , time backward:<span id="timeback120"> </span> sec<br>
-Choosing optimal height is <b>better in <span id="savesec" ></span> seconds </b> (out of <span id="totaltime20"> </span>) than traveling @20 m height on both direction<br>
+@20m <span id="ws20"> </span>m/s <span id="wd20"> </span> degrees: time foreward: <span id="timefore20"> </span>sec , time backward:<span id="timeback20"> </span> sec<br>
+@80m <span id="ws80"> </span>m/s <span id="wd80"> </span> degrees: time foreward :<span id="timefore80"> </span>sec , time backward:<span id="timeback80"> </span> sec<br>
+@120m <span id="ws120"> </span>m/s <span id="wd120"> </span> degrees: time foreward: <span id="timefore120"> </span>sec , time backward:<span id="timeback120"> </span> sec<br>
+Choosing optimal height is <b>better in <span id="savesec" ></span> seconds </b> (out of <span id="totaltime20"> </span>) than traveling @20 m height on both direction <span id="savepercent"> </span><br>
 </div>
 <br>
 Wind speed is taken from <a href="http://open-meteo.com" target="_blank">open-meteo.com<br>
