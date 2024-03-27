@@ -4,119 +4,58 @@
 // if choose start and than use GPs it makes two start marker
 // before calculate height test if there is start and destination
 // change minimum height to be 20m
-// let the user decide min and max heights
 // tell the user, how much he will save if he fly at 20m, 120m
 // let the user decide horizontal and vertical UAV speed
 
 //Set up some of our variables.
-var map; //Will contain map object.
+//var map; //Will contain map object.
 var marker = 0; ////Has the user plotted their location marker?
 var lat1,lat2, lng1, lng2;
-
+var marker1, marker2, label1, label2;
        
 //Function called to initialize / create the map.
 //This is called when the page has loaded.
-function initMap() {
-    //The center location of our map.
-    var centerOfMap = new google.maps.LatLng(40.375540905462294, -74.601920573035);
-
-    //Map options.
-    var options = {
-      center: centerOfMap, //Set center.
-      zoom: 15 //The zoom value.
-    };
-
-    //Create the map object.
-    map = new google.maps.Map(document.getElementById('map'), options);
-
-    //Listen for any clicks on the map.
-    google.maps.event.addListener(map, 'click', function(event) {                
-    //Get the location that the user clicked.
-    var clickedLocation = event.latLng;
-    //If the marker hasn't been added.
-    if(marker === 0){
-       //Create the marker.
-       marker1 = new google.maps.Marker({
-           position: clickedLocation,
-           label: "start",
-           map: map,
-           draggable: true //make it draggable
-            });
-       markerLocation(1);  
-       //Listen for drag events!
-       google.maps.event.addListener(marker1, 'dragend', function(event){
-           markerLocation(1);  
-  });
-        marker=1;
-    } else{
-        if(marker === 1){
-            //Create the marker.
-            marker2 = new google.maps.Marker({
-                position: clickedLocation,
-                label: "destination",
-                map: map,
-                draggable: true //make it draggable
-            });
-            markerLocation();
-            //Listen for drag events!
-            google.maps.event.addListener(marker2, 'dragend', function(event){
-                markerLocation(2);  
-           });
-   marker=2;
-        } else{
-            //Marker has already been added, so just change its location.
-            marker2.setPosition(clickedLocation);
-                markerLocation(2);  
-        }
-        }
-    });
-}
-
 
 function moveToLocation(lat, lng){
-  const center = new google.maps.LatLng(lat, lng);
-  // using global variable:
-  window.map.panTo(center);
+  map.setView([lat, lng], 14);
+  setstartloc(lat, lng)
 }
 
 function setstartloc(lat, long)
 {
     if(marker === 0){ // new marker
-   marker1 = new google.maps.Marker({
-       position: { lat: lat, lng: long },
-       label: "start",
-       map: map,
-       draggable: true //make it draggable
-   });
+            marker = 1;
+   marker1 = new L.marker(coords = [lat, long],{draggable: true,autoPan: true}).addTo(map);
+            marker1.bindTooltip("Start");  
+         markerLocation(1, marker1);    
    //Listen for drag events!
-   google.maps.event.addListener(marker1, 'dragend', function(event){
-       markerLocation(1);  
-   });
-    marker=1;
-    var currentLocation = marker1.getPosition();  
-    lat1 = currentLocation.lat(); //latitude
-    lng1 = currentLocation.lng(); //longitude    
+   marker1.on('dragend', function(event) {
+//        var latlng = event.target.getLatLng();
+       markerLocation(1, marker1);  
+});      
     }
-    else { //there is already marker
-               markerLocation(1);  
-         }
+//    else { //there is already marker
+//     window.alert(marker)
+//               markerLocation(2, marker1);  
+//         }
 }
+
 
 //This function will get the marker's current location and then add the lat/long
 //values to our textfields so that we can save the location.
-function markerLocation(sd){
+function markerLocation(sd, mark){
     //Get location.
     if (sd===1)
         {
-var currentLocation = marker1.getPosition();  
-lat1 = currentLocation.lat(); //latitude
-    lng1 = currentLocation.lng(); //longitude
+  var currentLocation = mark.getLatLng(); //getLatLng();  
+  lat1 = currentLocation.lat; //latitude
+  lng1 = currentLocation.lng; //longitude
         }
     else
         {
-var currentLocation = marker2.getPosition();  
-lat2 = currentLocation.lat(); //latitude
-    lng2 = currentLocation.lng(); //longitude
+   var currentLocation = mark.getLatLng();  
+   lat2 = currentLocation.lat; //latitude
+   lng2 = currentLocation.lng; //longitude
         }
            
 }
@@ -235,11 +174,14 @@ dist30max[i]=(3600-timeupdown[i])*(speedhorizontal+ws[i]*angle)/((speedhorizonta
     document.getElementById('heightback').innerHTML = heights[minhorb].toFixed(2)
     document.getElementById('distance').innerHTML = dist.toFixed(2)
     document.getElementById('dronedir').innerHTML = dronedegrees.toFixed(2)
-    document.getElementById('winddir').innerHTML = wd80.toFixed(2)
+//  document.getElementById('winddir').innerHTML = wd[0].toFixed(2)
     document.getElementById('timenowind').innerHTML = (timeupdown[0]+(dist / speedhorizontal)).toFixed(2)
     document.getElementById('ws20').innerHTML = (ws[0]).toFixed(2)
     document.getElementById('ws80').innerHTML = (ws[6]).toFixed(2)
     document.getElementById('ws120').innerHTML = (ws[10]).toFixed(2)
+    document.getElementById('wd20').innerHTML = (wd[0]).toFixed(0)
+    document.getElementById('wd80').innerHTML = (wd[6]).toFixed(0)
+    document.getElementById('wd120').innerHTML = (wd[10]).toFixed(0)
     document.getElementById('timefore20').innerHTML = (timeupdown[0]+timehor[0]).toFixed(2)
     document.getElementById('timeback20').innerHTML = (timeupdown[0]+timehorb[0]).toFixed(2)
     document.getElementById('timefore80').innerHTML = (timeupdown[6]+timehor[6]).toFixed(2)
@@ -255,12 +197,65 @@ dist30max[i]=(3600-timeupdown[i])*(speedhorizontal+ws[i]*angle)/((speedhorizonta
 
     document.getElementById('savesec').innerHTML = (travel20-travelopt).toFixed(2)
     document.getElementById('totaltime20').innerHTML = travel20.toFixed(2)
-
+    document.getElementById('savepercent').innerHTML = "(" +((travel20-travelopt)/travel20*100).toFixed(2) +"%)"
     return;
 
 }
 
-
        
 //Load the map when the page has finished loading.
-google.maps.event.addDomListener(window, 'load', initMap);
+
+//google.maps.event.addDomListener(window, 'load', initMap);
+
+
+const map = L.map('map').setView([40.375540905462294, -74.601920573035], 14);
+
+const tiles = L.tileLayer('http://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}',{
+maxZoom: 20,
+attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'        ,
+subdomains:['mt0','mt1','mt2','mt3']
+}).addTo(map);
+
+map.attributionControl.setPrefix('Google map image') //remove flag
+
+map.on('click', addMarker);
+
+function addMarker(e){
+    // Add marker to map at click location; add popup window  
+   
+        if(marker === 0){
+        marker=1;        
+       //Create the marker.
+   marker1 = new L.marker(coords = e.latlng,{draggable: true,autoPan: true ,color: 'car'}).addTo(map);
+//marker1.valueOf()._icon.style.marker-color = 'red';
+       marker1.bindTooltip("Start");    
+       
+       markerLocation(1, marker1);  
+       //Listen for drag events!
+       
+marker1.on('dragend', function(event) {
+ var latlng = event.target.getLatLng();
+ markerLocation(1, marker1);
+});      
+    } else{
+        if(marker === 1){
+            marker=2;
+            //Create the marker.
+   marker2 = new L.marker(coords = e.latlng,{draggable: true,autoPan: true}).addTo(map);
+//marker1.valueOf()._icon.style.marker-color = 'green'    
+            marker2.bindTooltip("Destination");    
+            markerLocation(2, marker2);
+            //Listen for drag events!
+     marker2.on('dragend', function(event) {
+   markerLocation(2, marker2);  
+});      
+        } else{
+            //Marker has already been added, so just change its location.
+                var lat = (e.latlng.lat);
+                var lng = (e.latlng.lng);
+                var newLatLng = new L.LatLng(lat, lng);
+                marker2.setLatLng(newLatLng);    
+                markerLocation(2, marker2);  
+        }
+        }
+}
