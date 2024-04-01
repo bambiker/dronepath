@@ -79,7 +79,7 @@ function deg2rad(deg) {
 }
 
 async function getJSON() {
-   const apiUrl = 'https://api.open-meteo.com/v1/forecast?latitude='+lat1+'&longitude='+lng1+'&hourly=wind_speed_10m,wind_speed_80m,wind_speed_120m,wind_speed_180m,wind_direction_10m,wind_direction_80m,wind_direction_120m,wind_direction_180m&forecast_days=1';
+   const apiUrl = 'https://api.open-meteo.com/v1/forecast?latitude='+lat1+'&longitude='+lng1+'&hourly=wind_speed_10m,wind_speed_80m,wind_speed_120m,wind_speed_180m,wind_direction_10m,wind_direction_80m,wind_direction_120m,wind_direction_180m,visibility,precipitation_probability,precipitation&forecast_days=1';
 
     return fetch(apiUrl)
         .then((response)=>response.json())
@@ -87,20 +87,31 @@ async function getJSON() {
 }
 
 async function calcHeight() {
+
+    if (marker==0){
+       window.alert('please choose location');
+       return;
+        }
     const json = await this.getJSON();  // command waits until completion
 
-
-         const d = new Date();
-         let hour = d.getUTCHours();
-var mydata = JSON.stringify(json, null, 2);
+    const d = new Date();
+    let hour = d.getUTCHours();
+    var mydata = JSON.stringify(json, null, 2);
 
 ws10=json.hourly.wind_speed_10m[hour-1]/3.6; //array start at zero
-         ws80=json.hourly.wind_speed_80m[hour-1]/3.6; //array start at zero
-         ws120=json.hourly.wind_speed_120m[hour-1]/3.6; //array start at zero
-         wd10=json.hourly.wind_direction_10m[hour-1]; //array start at zero
-         wd80=json.hourly.wind_direction_80m[hour-1]; //array start at zero
-         wd120=json.hourly.wind_direction_120m[hour-1]; //array start at zero
+ws80=json.hourly.wind_speed_80m[hour-1]/3.6; //array start at zero
+ws120=json.hourly.wind_speed_120m[hour-1]/3.6; //array start at zero
+wd10=json.hourly.wind_direction_10m[hour-1]; //array start at zero
+wd80=json.hourly.wind_direction_80m[hour-1]; //array start at zero
+wd120=json.hourly.wind_direction_120m[hour-1]; //array start at zero
+precipitation_probability=json.hourly.precipitation_probability[hour-1];
+precipitation=json.hourly.precipitation[hour-1];
+visibility=json.hourly.visibility[hour-1];
 
+    if (marker==1)
+        {lat2=lat1;
+         lng2=lng1;
+        }
     startlat=lat1;
     startlng=lng1;
     destlat=lat2;
@@ -198,8 +209,12 @@ dist30max[i]=(3600-timeupdown[i])*(speedhorizontal+ws[i]*angle)/((speedhorizonta
     document.getElementById('savesec').innerHTML = (travel20-travelopt).toFixed(2)
     document.getElementById('totaltime20').innerHTML = travel20.toFixed(2)
     document.getElementById('savepercent').innerHTML = "(" +((travel20-travelopt)/travel20*100).toFixed(2) +"%)"
+   
+    document.getElementById('visibility').innerHTML = visibility.toFixed(0)
+    document.getElementById('precipitation').innerHTML = precipitation.toFixed(1)
+    document.getElementById('precipitation_probability').innerHTML = precipitation_probability.toFixed(0)
+   
     return;
-
 }
 
        
