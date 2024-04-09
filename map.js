@@ -130,14 +130,17 @@ visibility=json.hourly.visibility[hour-1];
     speedup=document.getElementById('asc').value/document.getElementById('payload').value;
     speeddown=document.getElementById('des').value/document.getElementById('payload').value;
     speedhorizontal=document.getElementById('hor').value/document.getElementById('payload').value;
+    speedupback=document.getElementById('asc').value/document.getElementById('payloadback').value;
+    speeddownback=document.getElementById('des').value/document.getElementById('payloadback').value;
+    speedhorizontalback=document.getElementById('hor').value/document.getElementById('payloadback').value;
    
     drag=document.getElementById('drag').value
    
     heights = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]
     ws = []
     wd = []
-    dist30max=[]
     timeupdown = []
+    timeupdownback = []
     timehor = []
     timehorb = []
     for (i=0;i<heights.length; i++) {
@@ -162,23 +165,20 @@ visibility=json.hourly.visibility[hour-1];
    wd[i]=wd80*(120-heights[i])/40+wd120*(heights[i]-80)/40
    }
 timeupdown[i] = (heights[i]/speedup)+(heights[i]/speeddown)
+timeupdownback[i] = (heights[i]/speedupback)+(heights[i]/speeddownback)
 diffangle=(wd[i]-dronedegrees)/180*Math.PI
 angle = Math.cos(diffangle)*drag
 timehor[i] = dist /  (speedhorizontal+ws[i]*angle)
-timehorb[i] = dist / (speedhorizontal-ws[i]*angle)
-dist30max[i]=(3600-timeupdown[i])*(speedhorizontal+ws[i]*angle)/((speedhorizontal+ws[i]*angle)+(speedhorizontal-ws[i]*angle))*(speedhorizontal-ws[i]*angle)
+timehorb[i] = dist / (speedhorizontalback-ws[i]*angle)
     }
 
     minhor = 0
     minhorb = 0
-    maxdist30 = 0
     for (i=0;i<heights.length; i++) {
         if (timeupdown[i]+timehor[i]<timeupdown[minhor]+timehor[minhor])
             minhor=i
-        if (timeupdown[i]+timehorb[i]<timeupdown[minhorb]+timehorb[minhorb])
+        if (timeupdownback[i]+timehorb[i]<timeupdownback[minhorb]+timehorb[minhorb])
             minhorb=i
-        if (dist30max[i]>dist30max[maxdist30])
-            maxdist30=i
     }
        
     document.getElementById('heightfore').innerHTML = heights[minhor].toFixed(2)
@@ -194,18 +194,15 @@ dist30max[i]=(3600-timeupdown[i])*(speedhorizontal+ws[i]*angle)/((speedhorizonta
     document.getElementById('wd80').innerHTML = (wd[6]).toFixed(0)
     document.getElementById('wd120').innerHTML = (wd[10]).toFixed(0)
     document.getElementById('timefore20').innerHTML = (timeupdown[0]+timehor[0]).toFixed(2)
-    document.getElementById('timeback20').innerHTML = (timeupdown[0]+timehorb[0]).toFixed(2)
+    document.getElementById('timeback20').innerHTML = (timeupdownback[0]+timehorb[0]).toFixed(2)
     document.getElementById('timefore80').innerHTML = (timeupdown[6]+timehor[6]).toFixed(2)
-    document.getElementById('timeback80').innerHTML = (timeupdown[6]+timehorb[6]).toFixed(2)
+    document.getElementById('timeback80').innerHTML = (timeupdownback[6]+timehorb[6]).toFixed(2)
     document.getElementById('timefore120').innerHTML = (timeupdown[10]+timehor[10]).toFixed(2)
-    document.getElementById('timeback120').innerHTML = (timeupdown[10]+timehorb[10]).toFixed(2)
+    document.getElementById('timeback120').innerHTML = (timeupdownback[10]+timehorb[10]).toFixed(2)
 
-    travel20=2*timeupdown[0]+timehor[0]+timehorb[0]
-    travelopt=timeupdown[minhor]+timehor[minhor]+timeupdown[minhorb]+timehorb[minhorb]
-    //window.alert(2*timeupdown[0]+','+timehor[0]+timehorb[0]+'('+iminfore+','+iminback)
-
-
-
+    travel20=timeupdown[0]+timeupdownback[0]+timehor[0]+timehorb[0]
+    travelopt=timeupdown[minhor]+timehor[minhor]+timeupdownback[minhorb]+timehorb[minhorb]
+    
     document.getElementById('savesec').innerHTML = (travel20-travelopt).toFixed(2)
     document.getElementById('totaltime20').innerHTML = travel20.toFixed(2)
     document.getElementById('savepercent').innerHTML = "(" +((travel20-travelopt)/travel20*100).toFixed(2) +"%)"
