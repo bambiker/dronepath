@@ -78,6 +78,17 @@ function deg2rad(deg) {
   return deg * (Math.PI/180)
 }
 
+function drift(){
+// from Observing Boundary-Layer Winds from Hot-Air Balloon Flights 2016
+// Cd is the drone drag coefficient
+// rho is the air density (kg/m^3)
+// A is the drone area when looking from the side (m^2)
+// m is the drone mass (kg)
+//////// a = cd*rho*A/2m
+// v0 is the relative speed at t=0
+// v(t) = 1 / (a*t+(1/v0))
+}
+
 async function getJSON() {
    const apiUrl = 'https://api.open-meteo.com/v1/forecast?latitude='+lat1+'&longitude='+lng1+'&hourly=wind_speed_10m,wind_speed_80m,wind_speed_120m,wind_speed_180m,wind_direction_10m,wind_direction_80m,wind_direction_120m,wind_direction_180m,visibility,precipitation_probability,precipitation&forecast_days=1';
 
