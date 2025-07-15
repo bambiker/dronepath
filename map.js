@@ -191,34 +191,35 @@ timehorb[i] = dist / (speedhorizontalback-ws[i]*angle)
         if (timeupdownback[i]+timehorb[i]<timeupdownback[minhorb]+timehorb[minhorb])
             minhorb=i
     }
-       
-    document.getElementById('heightfore').innerHTML = heights[minhor].toFixed(2)
-    document.getElementById('heightback').innerHTML = heights[minhorb].toFixed(2)
-    document.getElementById('distance').innerHTML = dist.toFixed(2)
-    document.getElementById('dronedir').innerHTML = dronedegrees.toFixed(2)
-    // document.getElementById('windrose').innerHTML = wd[0].toFixed(2)
-    document.getElementById('timenowind').innerHTML = (timeupdown[0]+timeupdownback[0]+(dist / speedhorizontal)+(dist / speedhorizontalback)).toFixed(2)
-    document.getElementById('ws20').innerHTML = (ws[0]).toFixed(2)
-    document.getElementById('ws80').innerHTML = (ws[6]).toFixed(2)
-    document.getElementById('ws120').innerHTML = (ws[10]).toFixed(2)
+
+    tofixed=0
+    document.getElementById('heightfore').innerHTML = heights[minhor].toFixed(tofixed)
+    document.getElementById('heightback').innerHTML = heights[minhorb].toFixed(tofixed)
+    document.getElementById('distance').innerHTML = dist.toFixed(tofixed)
+    document.getElementById('dronedir').innerHTML = dronedegrees.toFixed(tofixed)
+    // document.getElementById('windrose').innerHTML = wd[0].toFixed(tofixed)
+    document.getElementById('timenowind').innerHTML = (timeupdown[0]+timeupdownback[0]+(dist / speedhorizontal)+(dist / speedhorizontalback)).toFixed(tofixed)
+    document.getElementById('ws20').innerHTML = (ws[0]).toFixed(tofixed)
+    document.getElementById('ws80').innerHTML = (ws[6]).toFixed(tofixed)
+    document.getElementById('ws120').innerHTML = (ws[10]).toFixed(tofixed)
     document.getElementById('wd20').innerHTML = (wd[0]).toFixed(0)
     document.getElementById('wd80').innerHTML = (wd[6]).toFixed(0)
     document.getElementById('wd120').innerHTML = (wd[10]).toFixed(0)
-    document.getElementById('timefore20').innerHTML = (timeupdown[0]+timehor[0]).toFixed(2)
-    document.getElementById('timeback20').innerHTML = (timeupdownback[0]+timehorb[0]).toFixed(2)
-    document.getElementById('timefore80').innerHTML = (timeupdown[6]+timehor[6]).toFixed(2)
-    document.getElementById('timeback80').innerHTML = (timeupdownback[6]+timehorb[6]).toFixed(2)
-    document.getElementById('timefore120').innerHTML = (timeupdown[10]+timehor[10]).toFixed(2)
-    document.getElementById('timeback120').innerHTML = (timeupdownback[10]+timehorb[10]).toFixed(2)
+    document.getElementById('timefore20').innerHTML = (timeupdown[0]+timehor[0]).toFixed(tofixed)
+    document.getElementById('timeback20').innerHTML = (timeupdownback[0]+timehorb[0]).toFixed(tofixed)
+    document.getElementById('timefore80').innerHTML = (timeupdown[6]+timehor[6]).toFixed(tofixed)
+    document.getElementById('timeback80').innerHTML = (timeupdownback[6]+timehorb[6]).toFixed(tofixed)
+    document.getElementById('timefore120').innerHTML = (timeupdown[10]+timehor[10]).toFixed(tofixed)
+    document.getElementById('timeback120').innerHTML = (timeupdownback[10]+timehorb[10]).toFixed(tofixed)
 
     travel20=timeupdown[0]+timeupdownback[0]+timehor[0]+timehorb[0]
     travelopt=timeupdown[minhor]+timehor[minhor]+timeupdownback[minhorb]+timehorb[minhorb]
     
     document.getElementById('savesec').innerHTML = (travel20-travelopt).toFixed(2)
-    document.getElementById('totaltime20').innerHTML = travel20.toFixed(2)
+    document.getElementById('totaltime20').innerHTML = travel20.toFixed(tofixed)
     document.getElementById('savepercent').innerHTML = "(" +((travel20-travelopt)/travel20*100).toFixed(2) +"%)"
    
-    document.getElementById('visibility').innerHTML = visibility.toFixed(0)
+    document.getElementById('visibility').innerHTML = (visibility/1000).toFixed(0)
     document.getElementById('precipitation').innerHTML = precipitation.toFixed(1)
     document.getElementById('precipitation_probability').innerHTML = precipitation_probability.toFixed(0)
    
