@@ -713,7 +713,7 @@ footer a:hover {
 
   <!-- Calculate Button -->
   <div style="text-align: center; margin: 30px 0;">
-    <button class="btn btn-primary" onclick="getHeight()" style="font-size: 1.1em; padding: 16px 40px;">
+    <button class="btn btn-primary" id="calculateBtn" style="font-size: 1.1em; padding: 16px 40px;">
       <i class="fas fa-calculator"></i> Calculate Optimal Height
     </button>
   </div>
@@ -887,7 +887,7 @@ footer a:hover {
     </div>
 
     <div class="card">
-      <details>
+      <details open>
         <summary><i class="fas fa-graduation-cap"></i> Research & References</summary>
         <div style="margin-top: 15px; line-height: 1.8;">
           <p><strong>Payload Effect:</strong></p>
@@ -921,7 +921,7 @@ footer a:hover {
   </p>
 </footer>
 
-<!-- Scripts -->
+<!-- Load map.js first -->
 <script type="text/javascript" src="map.js"></script>
 
 <script>
@@ -941,12 +941,27 @@ darkModeToggle.addEventListener('click', function() {
   darkModeToggle.innerHTML = isDark ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
 });
 
-// Sync Building Checkbox with map.js
+// Calculate button event listener
 document.addEventListener('DOMContentLoaded', function() {
+  const calculateBtn = document.getElementById('calculateBtn');
   const checkbox = document.getElementById('considerBuildings');
+  
+  if (calculateBtn) {
+    calculateBtn.addEventListener('click', function() {
+      if (typeof getHeight === 'function') {
+        getHeight();
+      } else {
+        console.error('getHeight function not found');
+        alert('Error: Calculator not loaded. Please refresh the page.');
+      }
+    });
+  }
+  
   if (checkbox) {
     checkbox.addEventListener('change', function() {
-      considerBuildings = this.checked;
+      if (typeof window.considerBuildings !== 'undefined') {
+        window.considerBuildings = this.checked;
+      }
     });
   }
 });
