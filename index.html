@@ -1,259 +1,956 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <title>Calculator for drone optimal height</title>
-    
+    <title>Drone Optimal Height Calculator</title>
     
 <base target="_top">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""> </script>
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<!-- Font Awesome for Icons -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 <style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --primary: #00006D;
+  --primary-light: #1a1a99;
+  --primary-dark: #000052;
+  --secondary: #3e8e41;
+  --secondary-light: #5fa85f;
+  --danger: #e74c3c;
+  --warning: #f39c12;
+  --success: #27ae60;
+  --info: #3498db;
+  --light-bg: #f8f9fa;
+  --dark-bg: #1e1e2e;
+  --text-primary: #2c3e50;
+  --text-secondary: #7f8c8d;
+  --border-color: #e0e0e0;
+  --shadow: 0 4px 15px rgba(0, 0, 109, 0.1);
+  --shadow-lg: 0 10px 40px rgba(0, 0, 109, 0.2);
+}
+
 html, body {
-height: 100%;
-margin: 1%;
-}
-.leaflet-container {
-height: 400px;
-width: 600px;
-max-width: 100%;
-max-height: 100%;
+  height: 100%;
+  font-family: 'Inter', sans-serif;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  color: var(--text-primary);
 }
 
-.button {
-  display: inline-block;
-  padding: 15px 25px;
-  font-size: 24px;
-  cursor: pointer;
+body.dark-mode {
+  background: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
+  color: #e0e0e0;
+}
+
+/* Header */
+.header {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+  color: white;
+  padding: 40px 20px;
   text-align: center;
-  text-decoration: none;
-  outline: none;
-  color: #fff;
-  background-color: #00006D;
+  box-shadow: var(--shadow-lg);
+  position: relative;
+  overflow: hidden;
+}
+
+.header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 120" preserveAspectRatio="none"><path d="M0,50 Q300,0 600,50 T1200,50 L1200,120 L0,120 Z" fill="rgba(255,255,255,0.1)"/></svg>');
+  background-repeat: repeat-x;
+  animation: wave 15s linear infinite;
+}
+
+@keyframes wave {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(1200px); }
+}
+
+.header-content {
+  position: relative;
+  z-index: 1;
+}
+
+.header h1 {
+  font-size: 2.5em;
+  font-weight: 700;
+  margin-bottom: 10px;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+}
+
+.header p {
+  font-size: 1.1em;
+  opacity: 0.95;
+  font-weight: 300;
+}
+
+/* Container */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+/* Toggle Dark Mode */
+.dark-mode-toggle {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  background: white;
   border: none;
+  padding: 12px 16px;
+  border-radius: 50px;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  font-size: 1.2em;
+  transition: all 0.3s ease;
+}
+
+.dark-mode-toggle:hover {
+  transform: scale(1.1);
+  box-shadow: var(--shadow-lg);
+}
+
+/* Cards */
+.card {
+  background: white;
   border-radius: 15px;
-  box-shadow: 0 9px #999;
+  padding: 30px;
+  margin-bottom: 25px;
+  box-shadow: var(--shadow);
+  transition: all 0.3s ease;
+  border: 1px solid var(--border-color);
 }
 
-.button:hover {background-color: #3e8e41}
-
-.button:active {
-  background-color: #3e8e41;
-  box-shadow: 0 5px #666;
-  transform: translateY(4px);
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--shadow-lg);
 }
 
-.checkbox-container {
-  margin: 15px 0;
-  padding: 10px;
-  background-color: #f0f0f0;
-  border-radius: 5px;
+.dark-mode .card {
+  background: #2d2d44;
+  border-color: #404056;
+  color: #e0e0e0;
 }
 
-.checkbox-container input[type="checkbox"] {
-  margin-right: 10px;
-  width: 18px;
-  height: 18px;
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
   cursor: pointer;
+  user-select: none;
 }
 
-.checkbox-container label {
+.card-header i {
+  font-size: 1.5em;
+  color: var(--primary);
+}
+
+.card-header h2 {
+  font-size: 1.4em;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Forms */
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.dark-mode .form-group label {
+  color: #e0e0e0;
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"] {
+  width: 100%;
+  padding: 12px 15px;
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 1em;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.3s ease;
+  background: white;
+  color: var(--text-primary);
+}
+
+.dark-mode .form-group input[type="text"],
+.dark-mode .form-group input[type="number"] {
+  background: #1e1e2e;
+  border-color: #404056;
+  color: #e0e0e0;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(0, 0, 109, 0.1);
+}
+
+/* Checkbox */
+.checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  background: var(--light-bg);
+  padding: 20px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  border-left: 4px solid var(--secondary);
+}
+
+.dark-mode .checkbox-group {
+  background: #1e1e2e;
+  border-left-color: #5fa85f;
+}
+
+.checkbox-group input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
   cursor: pointer;
-  font-size: 16px;
+  accent-color: var(--secondary);
+}
+
+.checkbox-group label {
+  cursor: pointer;
+  font-weight: 500;
+  margin: 0;
+}
+
+/* Buttons */
+.btn {
+  padding: 14px 30px;
+  font-size: 1em;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
   display: inline-flex;
   align-items: center;
+  gap: 8px;
+  font-family: 'Poppins', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
-    
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+  color: white;
+  box-shadow: var(--shadow);
+}
+
+.btn-primary:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
+}
+
+.btn-primary:active {
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: var(--secondary);
+  color: white;
+}
+
+.btn-secondary:hover {
+  background: var(--secondary-light);
+}
+
+/* Map */
+.map-container {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  margin-bottom: 25px;
+}
+
+.leaflet-container {
+  height: 450px;
+  width: 100%;
+  border-radius: 12px;
+}
+
+/* Loading Indicator */
+#loadingIndicator {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  padding: 40px;
+  border-radius: 15px;
+  box-shadow: var(--shadow-lg);
+  z-index: 2000;
+  text-align: center;
+  min-width: 300px;
+}
+
+.spinner {
+  border: 4px solid var(--light-bg);
+  border-top: 4px solid var(--primary);
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+#loadingIndicator p {
+  font-size: 1.1em;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* Error Message */
+#errorMessage {
+  display: none;
+  background: #ffe6e6;
+  border-left: 4px solid var(--danger);
+  color: #c0392b;
+  padding: 15px 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  animation: slideIn 0.3s ease;
+}
+
+.dark-mode #errorMessage {
+  background: #5a2c2c;
+  color: #ff9999;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Results Grid */
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.result-card {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+  color: white;
+  padding: 25px;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+
+.result-card h3 {
+  font-size: 0.9em;
+  opacity: 0.9;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.result-card .value {
+  font-size: 2.5em;
+  font-weight: 700;
+  font-family: 'Poppins', sans-serif;
+}
+
+.result-card .unit {
+  font-size: 1em;
+  opacity: 0.8;
+  margin-left: 5px;
+}
+
+.result-card.secondary {
+  background: linear-gradient(135deg, var(--secondary) 0%, var(--secondary-light) 100%);
+}
+
+.result-card.info {
+  background: linear-gradient(135deg, var(--info) 0%, #2980b9 100%);
+}
+
+/* Details Elements */
+details {
+  margin-bottom: 20px;
+}
+
+summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 15px;
+  background: var(--light-bg);
+  border-radius: 8px;
+  user-select: none;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dark-mode summary {
+  background: #1e1e2e;
+}
+
+summary:hover {
+  background: #e8e8e8;
+}
+
+.dark-mode summary:hover {
+  background: #404056;
+}
+
+summary::marker {
+  color: var(--primary);
+}
+
+details[open] summary {
+  background: var(--light-bg);
+  border-radius: 8px 8px 0 0;
+}
+
+details > * {
+  padding: 15px;
+}
+
+/* Footer */
+footer {
+  background: var(--primary);
+  color: white;
+  padding: 30px 20px;
+  text-align: center;
+  margin-top: 50px;
+  border-top: 1px solid var(--border-color);
+}
+
+footer a {
+  color: #fff;
+  text-decoration: none;
+  transition: opacity 0.3s;
+}
+
+footer a:hover {
+  opacity: 0.8;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .container {
+    padding: 20px 15px;
+  }
+
+  .header h1 {
+    font-size: 1.8em;
+  }
+
+  .card {
+    padding: 20px;
+  }
+
+  .results-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .leaflet-container {
+    height: 300px;
+  }
+
+  .btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Info Box */
+.info-box {
+  background: #e3f2fd;
+  border-left: 4px solid var(--info);
+  padding: 15px 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 0.95em;
+  line-height: 1.6;
+}
+
+.dark-mode .info-box {
+  background: #1e3a5f;
+  color: #90caf9;
+}
+
+/* Building Info */
+#buildingInfo {
+  background: var(--light-bg);
+  padding: 15px;
+  border-radius: 8px;
+  margin-top: 15px;
+  border-left: 4px solid var(--warning);
+  font-size: 0.95em;
+}
+
+.dark-mode #buildingInfo {
+  background: #1e1e2e;
+  color: #e0e0e0;
+}
+
+/* Wind Data Display */
+.wind-data {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.wind-item {
+  background: var(--light-bg);
+  padding: 15px;
+  border-radius: 8px;
+  border-top: 3px solid var(--primary);
+}
+
+.dark-mode .wind-item {
+  background: #1e1e2e;
+  border-color: #5fa85f;
+}
+
+.wind-item-label {
+  font-size: 0.85em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.wind-item-value {
+  font-size: 1.4em;
+  font-weight: 700;
+  color: var(--primary);
+}
+
 </style>
-   
-       
-   
+
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-5SL33P5MG7"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
-
   gtag('config', 'G-5SL33P5MG7');
 </script>
-   
+
 </head>
 <body>
 
-<h1>Calculator for the optimal height to fly a delivery UAV</h1>
+<!-- Dark Mode Toggle -->
+<button class="dark-mode-toggle" id="darkModeToggle" title="Toggle Dark Mode">
+  <i class="fas fa-moon"></i>
+</button>
 
-<details>
-<summary>Why it's important</summary>
-    <ul>
-    <li> Write your start point and destination and we will tell you what travel height is optimal for you.</li>
-    <li> This way, Food delivery will be better(faster, fresh, warm), you will save battery or you can fly for longer distances.</li>
-    <li> When you fly often, for example in a delivery company, the efficiency will sum.</li>
-    <li> We allow you to fly even if there is a high wind warnings by knowing that high winds are not everywhere.</li>
-    <li> We should fly above 30m to reduce noise.</li>
-    <li> Choosing the flight height is mainly important for long distance, high drag coefficient and when you go to/back with the wind direction.</li>
-    <li> Drag is good, if you fly with knowing the wind.</li>
-    </ul>
-</details>
+<!-- Header -->
+<div class="header">
+  <div class="header-content">
+    <h1><i class="fas fa-drone"></i> Drone Optimal Height Calculator</h1>
+    <p>Find the perfect flight altitude for maximum efficiency and safety</p>
+  </div>
+</div>
 
-<details>
-<summary>Drone configuration</summary>
-    Drone speed is taken from https://www.dji.com/global/mavic-3-classic/specs<br>
-        <form method="post">
-            horizontal speed: <input type="text" id="hor" value="21"> m/s <br>
-            Ascent speed:  <input type="text" id="asc" value="8"> m/s<br>
-            Descent speed:  <input type="text" id="des" value="6"> m/s<br>
-            Drag coefficient:  <input type="text" id="drag" value="1.0"><br>
-            payload coefficient:  <input type="text" id="payload" value="2"> (2 means that you carry a weight equal to the drone weight, thus the speed will cut to half)<br>
-            payload coefficient on the way back:  <input type="text" id="payloadback" value="1"> (2 means that you carry a weight equal to the drone weight, thus the speed will cut to half)<br>
-        </form>
-</details>
+<!-- Main Container -->
+<div class="container">
+  
+  <!-- Error Message -->
+  <div id="errorMessage"></div>
 
-<details>
-<summary>Building Clearance</summary>
-    <div class="checkbox-container">
-        <label>
-            <input type="checkbox" id="considerBuildings" checked> 
-            <span>התחשב בגובה המבנים (מינימום טיסה: גובה מבנה + 20 מטר)</span>
-        </label>
+  <!-- Loading Indicator -->
+  <div id="loadingIndicator">
+    <div class="spinner"></div>
+    <p>Calculating optimal height...</p>
+  </div>
+
+  <!-- Info Section -->
+  <div class="info-box">
+    <i class="fas fa-info-circle"></i>
+    <strong>How it works:</strong> Select your start and destination points on the map, configure your drone settings, then click "Calculate Height" to get the optimal flight altitude considering wind conditions at different heights.
+  </div>
+
+  <!-- Map Card -->
+  <div class="card">
+    <div class="card-header">
+      <i class="fas fa-map"></i>
+      <h2>Flight Route</h2>
     </div>
-    <p style="font-size: 14px; color: #666;">
-        כאשר הדגל דולק, המערכת תשלוף מידע מבנים מהטווח בין התחלה לסיום, 
-        ותבטיח שגובה הטיסה לא יפחות מ-20 מטר מעל המבנה הגבוה ביותר.
+    <p style="margin-bottom: 15px; color: var(--text-secondary);">
+      Click on the map to select start and destination points. You can drag markers to adjust locations.
     </p>
-</details>
+    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+      <button class="btn btn-primary" onclick="getLocation()">
+        <i class="fas fa-location-arrow"></i> Use My Location
+      </button>
+    </div>
+    <div class="map-container">
+      <div id="map"></div>
+    </div>
+  </div>
 
-<details>
-<summary>Research</summary>
-    <b>Payload effect</b><br>https://www.tytorobotics.com/blogs/articles/how-does-drone-payload-affect-flight-time<br>https://www.researchgate.net/figure/UAV-weight-and-payload-vs-flight-time_fig3[...]
-    <b>We should fly above 30m to reduce noise</b><br> "Determination of optimal flight altitude to minimise acoustic drone disturbance to wildlife using species audiograms
-" https://doi.org/10.1111/2041-210X.13691)<br>
-   <b>Drifting equations</b> <br>
-Observing Boundary-Layer Winds from Hot-Air Balloon Flights
-IF, E., BRUIJN, S., HAAN, F. C. B., SCHREUR, B. W., & HOLTSLAG, A. A. (2016). Observing Boundary-Layer Winds from Hot-Air Balloon Flights. (a ~= 0.1 for drone
-after one minute drifts almost the speed of the wind)  <br>    
-</details>
+  <!-- Drone Configuration Card -->
+  <div class="card">
+    <details open>
+      <summary>
+        <i class="fas fa-cog"></i>
+        <span>Drone Configuration</span>
+      </summary>
+      <div style="padding-top: 20px;">
+        <div style="background: var(--light-bg); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+          <p style="margin: 0; color: var(--text-secondary); font-size: 0.9em;">
+            Specs based on <a href="https://www.dji.com/global/mavic-3-classic/specs" target="_blank" style="color: var(--primary);">DJI Mavic 3 Classic</a>
+          </p>
+        </div>
 
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+          <div class="form-group">
+            <label><i class="fas fa-arrow-right"></i> Horizontal Speed</label>
+            <div style="display: flex; gap: 10px;">
+              <input type="text" id="hor" value="21" style="flex: 1;">
+              <span style="padding: 12px; color: var(--text-secondary);">m/s</span>
+            </div>
+          </div>
 
-    <script>
-        function getLocation() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(showPosition);
-               }
-            else {
-                 x.innerHTML = "Geolocation is not supported by this browser.";
-                 }
-        }
+          <div class="form-group">
+            <label><i class="fas fa-arrow-up"></i> Ascent Speed</label>
+            <div style="display: flex; gap: 10px;">
+              <input type="text" id="asc" value="8" style="flex: 1;">
+              <span style="padding: 12px; color: var(--text-secondary);">m/s</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label><i class="fas fa-arrow-down"></i> Descent Speed</label>
+            <div style="display: flex; gap: 10px;">
+              <input type="text" id="des" value="6" style="flex: 1;">
+              <span style="padding: 12px; color: var(--text-secondary);">m/s</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label><i class="fas fa-wind"></i> Drag Coefficient</label>
+            <input type="text" id="drag" value="1.0">
+          </div>
+
+          <div class="form-group">
+            <label><i class="fas fa-weight"></i> Payload Coefficient (Forward)</label>
+            <input type="text" id="payload" value="2">
+            <small style="color: var(--text-secondary); display: block; margin-top: 5px;">2 = drone weight equivalent, halves speed</small>
+          </div>
+
+          <div class="form-group">
+            <label><i class="fas fa-reply"></i> Payload Coefficient (Return)</label>
+            <input type="text" id="payloadback" value="1">
+            <small style="color: var(--text-secondary); display: block; margin-top: 5px;">Usually lighter on return</small>
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <!-- Building Clearance Card -->
+  <div class="card">
+    <details open>
+      <summary>
+        <i class="fas fa-building"></i>
+        <span>Building Clearance</span>
+      </summary>
+      <div style="padding-top: 20px;">
+        <div class="checkbox-group">
+          <input type="checkbox" id="considerBuildings" checked>
+          <label for="considerBuildings">
+            <i class="fas fa-check-circle" style="color: var(--secondary);"></i>
+            Consider Building Heights (Minimum: Tallest Building + 20m)
+          </label>
+        </div>
+        <div class="info-box">
+          <strong>How it works:</strong> When enabled, the system fetches building data in the flight corridor and ensures minimum altitude is at least 20 meters above the tallest building. This is disabled automatically if data cannot be retrieved, with safety minimum of 20 meters applied.
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <!-- Calculate Button -->
+  <div style="text-align: center; margin: 30px 0;">
+    <button class="btn btn-primary" onclick="getHeight()" style="font-size: 1.1em; padding: 16px 40px;">
+      <i class="fas fa-calculator"></i> Calculate Optimal Height
+    </button>
+  </div>
+
+  <!-- Results Card -->
+  <div id="result" class="card" style="display: none;">
+    <div class="card-header">
+      <i class="fas fa-chart-line"></i>
+      <h2>Calculation Results</h2>
+    </div>
+
+    <!-- Main Results -->
+    <div class="results-grid">
+      <div class="result-card">
+        <h3>Forward Height</h3>
+        <div class="value"><span id="heightfore">--</span><span class="unit">m</span></div>
+      </div>
+      <div class="result-card secondary">
+        <h3>Return Height</h3>
+        <div class="value"><span id="heightback">--</span><span class="unit">m</span></div>
+      </div>
+      <div class="result-card info">
+        <h3>Time Saved</h3>
+        <div class="value"><span id="savesec">--</span><span class="unit">s</span></div>
+        <small style="display: block; margin-top: 5px;">vs 20m flight</small>
+      </div>
+    </div>
+
+    <!-- Distance & Direction -->
+    <div style="background: var(--light-bg); padding: 20px; border-radius: 10px; margin: 20px 0;">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+        <div>
+          <strong style="color: var(--text-secondary);">Distance</strong>
+          <div style="font-size: 1.5em; font-weight: 700; color: var(--primary); margin-top: 5px;">
+            <span id="distance">--</span> m
+          </div>
+        </div>
+        <div>
+          <strong style="color: var(--text-secondary);">Drone Direction</strong>
+          <div style="font-size: 1.5em; font-weight: 700; color: var(--primary); margin-top: 5px;">
+            <span id="dronedir">--</span>°
+          </div>
+        </div>
+        <div>
+          <strong style="color: var(--text-secondary);">Total Time @20m</strong>
+          <div style="font-size: 1.5em; font-weight: 700; color: var(--primary); margin-top: 5px;">
+            <span id="totaltime20">--</span> s
+          </div>
+        </div>
+        <div>
+          <strong style="color: var(--text-secondary);">Efficiency Gain</strong>
+          <div style="font-size: 1.5em; font-weight: 700; color: var(--secondary); margin-top: 5px;">
+            <span id="savepercent">--</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wind Data -->
+    <div style="margin-top: 25px;">
+      <h3 style="margin-bottom: 15px;"><i class="fas fa-wind"></i> Wind Conditions</h3>
+      
+      <div style="margin-bottom: 20px;">
+        <strong style="color: var(--text-secondary);">No Wind Baseline</strong>
+        <div style="font-size: 1.2em; font-weight: 600; color: var(--primary); margin-top: 8px;">
+          <span id="timenowind">--</span> seconds
+        </div>
+      </div>
+
+      <div class="wind-data">
+        <div>
+          <div style="font-weight: 600; margin-bottom: 15px; color: var(--text-secondary);">@20m</div>
+          <div class="wind-item">
+            <div class="wind-item-label">Wind Speed</div>
+            <div class="wind-item-value"><span id="ws20">--</span> m/s</div>
+          </div>
+          <div class="wind-item">
+            <div class="wind-item-label">Direction</div>
+            <div class="wind-item-value"><span id="wd20">--</span>°</div>
+          </div>
+          <div class="wind-item" style="background: var(--light-bg); border-top: 3px solid var(--primary);">
+            <div class="wind-item-label">Travel Time</div>
+            <div style="font-size: 1.2em; font-weight: 600;">
+              <span id="timefore20">--</span>s → <span id="timeback20">--</span>s
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div style="font-weight: 600; margin-bottom: 15px; color: var(--text-secondary);">@80m</div>
+          <div class="wind-item">
+            <div class="wind-item-label">Wind Speed</div>
+            <div class="wind-item-value"><span id="ws80">--</span> m/s</div>
+          </div>
+          <div class="wind-item">
+            <div class="wind-item-label">Direction</div>
+            <div class="wind-item-value"><span id="wd80">--</span>°</div>
+          </div>
+          <div class="wind-item" style="background: var(--light-bg); border-top: 3px solid var(--primary);">
+            <div class="wind-item-label">Travel Time</div>
+            <div style="font-size: 1.2em; font-weight: 600;">
+              <span id="timefore80">--</span>s → <span id="timeback80">--</span>s
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div style="font-weight: 600; margin-bottom: 15px; color: var(--text-secondary);">@120m</div>
+          <div class="wind-item">
+            <div class="wind-item-label">Wind Speed</div>
+            <div class="wind-item-value"><span id="ws120">--</span> m/s</div>
+          </div>
+          <div class="wind-item">
+            <div class="wind-item-label">Direction</div>
+            <div class="wind-item-value"><span id="wd120">--</span>°</div>
+          </div>
+          <div class="wind-item" style="background: var(--light-bg); border-top: 3px solid var(--primary);">
+            <div class="wind-item-label">Travel Time</div>
+            <div style="font-size: 1.2em; font-weight: 600;">
+              <span id="timefore120">--</span>s → <span id="timeback120">--</span>s
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Weather Info -->
+    <div style="background: var(--light-bg); padding: 20px; border-radius: 10px; margin-top: 20px;">
+      <h3 style="margin-bottom: 15px;"><i class="fas fa-cloud"></i> Weather Forecast</h3>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+        <div>
+          <strong style="color: var(--text-secondary);">Precipitation Probability</strong>
+          <div style="font-size: 1.5em; font-weight: 700; color: var(--primary); margin-top: 5px;">
+            <span id="precipitation_probability">--</span>%
+          </div>
+        </div>
+        <div>
+          <strong style="color: var(--text-secondary);">Precipitation</strong>
+          <div style="font-size: 1.5em; font-weight: 700; color: var(--primary); margin-top: 5px;">
+            <span id="precipitation">--</span> mm
+          </div>
+        </div>
+        <div>
+          <strong style="color: var(--text-secondary);">Visibility</strong>
+          <div style="font-size: 1.5em; font-weight: 700; color: var(--primary); margin-top: 5px;">
+            <span id="visibility">--</span> km
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Building Info -->
+    <div id="buildingInfo"></div>
+  </div>
+
+  <!-- Information Cards -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 40px;">
     
-        function getHeight() {
-         calcHeight();      
-         var x = document.getElementById("result");
-         x.style.display = "block";
+    <div class="card">
+      <div class="card-header">
+        <i class="fas fa-lightbulb"></i>
+        <h2>Why it Matters</h2>
+      </div>
+      <ul style="margin: 0; padding-left: 20px; line-height: 1.8;">
+        <li>Optimal height = faster delivery with same battery</li>
+        <li>Wind patterns change significantly with altitude</li>
+        <li>Strategic height choice can save 10-30% flight time</li>
+        <li>Essential for commercial drone operations</li>
+        <li>Better efficiency = more deliveries per charge</li>
+      </ul>
+    </div>
 
-       }
+    <div class="card">
+      <details>
+        <summary><i class="fas fa-graduation-cap"></i> Research & References</summary>
+        <div style="margin-top: 15px; line-height: 1.8;">
+          <p><strong>Payload Effect:</strong></p>
+          <ul style="padding-left: 20px;">
+            <li><a href="https://www.tytorobotics.com/blogs/articles/how-does-drone-payload-affect-flight-time" target="_blank">Tyto Robotics - Payload Impact</a></li>
+            <li><a href="https://www.researchgate.net/figure/UAV-weight-and-payload-vs-flight-time_fig3" target="_blank">ResearchGate - UAV Performance Study</a></li>
+          </ul>
+          <p style="margin-top: 15px;"><strong>Noise Reduction:</strong></p>
+          <ul style="padding-left: 20px;">
+            <li><a href="https://doi.org/10.1111/2041-210X.13691" target="_blank">Optimal Flight Altitude to Minimise Acoustic Disturbance</a></li>
+          </ul>
+          <p style="margin-top: 15px;"><strong>Wind Drift Model:</strong></p>
+          <ul style="padding-left: 20px;">
+            <li>IF, E., BRUIJN, S., et al. (2016). Observing Boundary-Layer Winds from Hot-Air Balloon Flights</li>
+          </ul>
+        </div>
+      </details>
+    </div>
 
+  </div>
 
-       function showPosition(position) {
-               //x.innerHTML = "Latitude: " + position.coords.latitude +  "<br>Longitude: " + position.coords.longitude;
-               moveToLocation(position.coords.latitude,  position.coords.longitude)
-               setstartloc(position.coords.latitude,  position.coords.longitude)
+</div>
+
+<!-- Footer -->
+<footer>
+  <p><strong>Drone Optimal Height Calculator</strong> | Powered by Wind Data from <a href="https://open-meteo.com" target="_blank">Open-Meteo</a></p>
+  <p style="margin-top: 10px; font-size: 0.9em;">
+    <a href="https://docs.google.com/forms/d/e/1FAIpQLScucpTGf_6hN_e8NQMgTJqoPX7q7B1HavnFdywewEtgMXFuNA/viewform?usp=sf_link" target="_blank">
+      📧 Send Feedback & Suggestions
+    </a>
+  </p>
+</footer>
+
+<!-- Scripts -->
+<script type="text/javascript" src="map.js"></script>
+
+<script>
+// Dark Mode Toggle
+const darkModeToggle = document.getElementById('darkModeToggle');
+const isDarkMode = localStorage.getItem('darkMode') === 'true';
+
+if (isDarkMode) {
+  document.body.classList.add('dark-mode');
+  darkModeToggle.innerHTML = '<i class="fas fa-sun"></i>';
 }
-</script>
 
-  <br>
-        <b>Select a start and destination locations!</b><br>
+darkModeToggle.addEventListener('click', function() {
+  document.body.classList.toggle('dark-mode');
+  const isDark = document.body.classList.contains('dark-mode');
+  localStorage.setItem('darkMode', isDark);
+  darkModeToggle.innerHTML = isDark ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
+});
 
-<button class="button" onclick="getLocation()">Start with my location</button><br><br>
-       
-        Click on a location on the map to select it. Drag the marker to change location.<br><br>
-
-       
-        <!--map div-->
-        <div id="map" style="width: 600px; height: 400px;"></div>
-
-<script>
-</script>
-
-
-               
-        <script type="text/javascript" src="map.js"></script>
- <br>
-<button class="button" onclick="getHeight()">calculate height</button> <br><br>
- <div id="result" style="display:none">
-
-<b>Travel foreward at <span id="heightfore"> </span> m, and backward at <span id="heightback"> </span> m</b><br>
-Choosing optimal height is <b>better in <span id="savesec" ></span> seconds </b> (out of <span id="totaltime20"> </span>) than traveling @20 m height on both direction <span id="savepercent"> </span><br>
-Distance: <span id="distance" ></span>m, drone direction: <span id="dronedir"> </span> degrees<br>
-Direction rose<br>
-180<br>
-90 270<br>
-0/360<br>
-time without wind for both direction @20m: <span id="timenowind" ></span> sec<br>
-@20m <span id="ws20"> </span> m/s <span id="wd20"> </span> degrees: time foreward: <span id="timefore20"> </span> sec , time backward:<span id="timeback20"> </span> sec<br>
-@80m <span id="ws80"> </span> m/s <span id="wd80"> </span> degrees: time foreward :<span id="timefore80"> </span> sec , time backward:<span id="timeback80"> </span> sec<br>
-@120m <span id="ws120"> </span> m/s <span id="wd120"> </span> degrees: time foreward: <span id="timefore120"> </span> sec , time backward:<span id="timeback120"> </span> sec<br>
-We only check between 20-120 meters<br>
-precipitation_probability <span id="precipitation_probability"></span>%, precipitation <span id="precipitation"></span>mm, visibility <span id="visibility"></span>km<br>
-<div id="buildingInfo"></div>
-</div>
-<br>
-Wind speed is taken from <a href="http://open-meteo.com" target="_blank">open-meteo.com</a><br>
-
-<details>
-<summary>What's new</summary>
-    2024/04/10 - When we come back, the payload should be 1<br>
-    2024/04/05 - Adding a "share" button.<br>
-    2024/03/31 - Starting "what's new" and "Todo".<br>
-    2024/09/10 - Added building clearance feature with Overpass API integration<br>
-    <br>
-</details>
-
-<details>
-<summary>Todo</summary>
-<ul>
-    <li> Add gradually change of speed due to drift.</li>
-    <li> Add a rule of thumb when flying above the buildings is better than between the buildings (the street often not parallel to the wind)</li>
-</ul>    
-</details>
-
-
-<a href="https://docs.google.com/forms/d/e/1FAIpQLScucpTGf_6hN_e8NQMgTJqoPX7q7B1HavnFdywewEtgMXFuNA/viewform?usp=sf_link" target="_blank">Contact us for questions and improvement suggestions</a><br>
-
-    <!-- AddToAny BEGIN -->
-<div class="a2a_kit a2a_kit_size_32 a2a_default_style" data-a2a-url="https://bambiker.github.io/dronepath/">
-<a class="a2a_dd" href="https://www.addtoany.com/share"></a>
-<a class="a2a_button_copy_link"></a>
-<a class="a2a_button_twitter"></a>
-<a class="a2a_button_x"></a>
-<a class="a2a_button_whatsapp"></a>
-<a class="a2a_button_email"></a>
-<a class="a2a_button_telegram"></a>
-<a class="a2a_button_sms"></a>
-<a class="a2a_button_facebook"></a>
-<a class="a2a_button_pinterest"></a>
-<a class="a2a_button_linkedin"></a>
-<a class="a2a_button_reddit"></a>
-<a class="a2a_button_facebook_messenger"></a>
-<a class="a2a_button_google_gmail"></a>
-</div>
-<script async src="https://static.addtoany.com/menu/page.js"></script>
-<!-- AddToAny END -->
-
-<script>
-// סנכרון הדגל בהטעינת הדף
+// Sync Building Checkbox with map.js
 document.addEventListener('DOMContentLoaded', function() {
-    const checkbox = document.getElementById('considerBuildings');
-    if (checkbox) {
-        checkbox.addEventListener('change', function() {
-            considerBuildings = this.checked;
-        });
-    }
+  const checkbox = document.getElementById('considerBuildings');
+  if (checkbox) {
+    checkbox.addEventListener('change', function() {
+      considerBuildings = this.checked;
+    });
+  }
 });
 </script>
-    
-    </body>
+
+</body>
 </html>
