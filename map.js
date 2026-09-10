@@ -132,21 +132,31 @@ async function fetchBuildingsData(lat1, lon1, lat2, lon2) {
     
     // Overpass API query - שליפת רק גובה המבנים (מינימום מידע)
     const overpassQuery = `[out:json];(way["building"](${bbox});relation["building"](${bbox}););out geom(25);`;
-    const overpassUrl = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`;
     
-    const response = await fetch(overpassUrl, {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 שניות timeout
+    
+    const response = await fetch('https://overpass-api.de/api/interpreter', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
       },
-      body: `data=${encodeURIComponent(overpassQuery)}`
+      body: `data=${encodeURIComponent(overpassQuery)}`,
+      signal: controller.signal
     });
     
+    clearTimeout(timeoutId);
+    
     if (!response.ok) {
-      throw new Error(`Overpass API error: ${response.status}`);
+      throw new Error(`Overpass API error: ${response.status} ${response.statusText}`);
     }
     
     const data = await response.json();
+    
+    // בדיקה אם יש שגיאה בתשובה
+    if (data.error) {
+      throw new Error(`Overpass error: ${data.error.message}`);
+    }
     
     // מציאת גובה המבנה הגבוה ביותר
     let maxHeight = 0;
@@ -168,8 +178,14 @@ async function fetchBuildingsData(lat1, lon1, lat2, lon2) {
     
     return maxHeight;
   } catch (error) {
-    console.warn('שגיאה בשליפת נתוני מבנים:', error);
-    showError(`לא ניתן לשלוף נתוני מבנים: ${error.message}. הטיסה תתוכנן עם מינימום 20 מטר.`);
+    // אם זו בעיית timeout או connection, תן אפשרות להמשיך בלי מבנים
+    if (error.name === 'AbortError') {
+      console.warn('Overpass API timeout - ממשיך ללא נתוני מבנים');
+      showError('לא ניתן להתחבר ל-Overpass API (timeout). הטיסה תתוכנן עם מינימום 20 מטר.');
+    } else {
+      console.warn('שגיאה בשליפת נתוני מבנים:', error);
+      showError(`לא ניתן לשלוף נתוני מבנים: ${error.message}. הטיסה תתוכנן עם מינימום 20 מטר.`);
+    }
     return 0; // במקרה של שגיאה, חזור 0
   }
 }
@@ -327,6 +343,11 @@ async function calcHeight() {
         const buildingInfoDiv = document.getElementById('buildingInfo');
         if (buildingInfoDiv) {
           buildingInfoDiv.innerHTML = `<br><b>מידע מבנים:</b> גובה המבנה הגבוה ביותר: ${maxBuildingHeight.toFixed(1)}m, גובה מינימום הטיסה המומלץ: ${minHeight}m`;
+        }
+      } else if (considerBuildings) {
+        const buildingInfoDiv = document.getElementById('buildingInfo');
+        if (buildingInfoDiv) {
+          buildingInfoDiv.innerHTML = `<br><b>מידע מבנים:</b> לא נמצאו מבנים בטווח. גובה מינימום הטיסה: 20m`;
         }
       }
       
