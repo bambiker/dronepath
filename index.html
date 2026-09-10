@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <title>Calculator for drone optimal height</title>
-   
-   
+    
+    
 <base target="_top">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -46,6 +46,27 @@ max-height: 100%;
   box-shadow: 0 5px #666;
   transform: translateY(4px);
 }
+
+.checkbox-container {
+  margin: 15px 0;
+  padding: 10px;
+  background-color: #f0f0f0;
+  border-radius: 5px;
+}
+
+.checkbox-container input[type="checkbox"] {
+  margin-right: 10px;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.checkbox-container label {
+  cursor: pointer;
+  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+}
     
 </style>
    
@@ -83,17 +104,32 @@ max-height: 100%;
 <summary>Drone configuration</summary>
     Drone speed is taken from https://www.dji.com/global/mavic-3-classic/specs<br>
         <form method="post">
-           horizontal speed: <input type="text" id="hor" value="21"> m/s <br>
-           Ascent speed:  <input type="text" id="asc" value="8"> m/s<br>
-           Descent speed:  <input type="text" id="des" value="6"> m/s<br>
-           Drag coefficient:  <input type="text" id="drag" value="1.0"><br>
-           payload coefficient:  <input type="text" id="payload" value="2"> (2 means that you carry a weight equal to the drone weight, thus the speed will cut to half)<br>
-           payload coefficient on the way back:  <input type="text" id="payloadback" value="1"> (2 means that you carry a weight equal to the drone weight, thus the speed will cut to half)<br>
+            horizontal speed: <input type="text" id="hor" value="21"> m/s <br>
+            Ascent speed:  <input type="text" id="asc" value="8"> m/s<br>
+            Descent speed:  <input type="text" id="des" value="6"> m/s<br>
+            Drag coefficient:  <input type="text" id="drag" value="1.0"><br>
+            payload coefficient:  <input type="text" id="payload" value="2"> (2 means that you carry a weight equal to the drone weight, thus the speed will cut to half)<br>
+            payload coefficient on the way back:  <input type="text" id="payloadback" value="1"> (2 means that you carry a weight equal to the drone weight, thus the speed will cut to half)<br>
         </form>
 </details>
+
+<details>
+<summary>Building Clearance</summary>
+    <div class="checkbox-container">
+        <label>
+            <input type="checkbox" id="considerBuildings" checked> 
+            <span>התחשב בגובה המבנים (מינימום טיסה: גובה מבנה + 20 מטר)</span>
+        </label>
+    </div>
+    <p style="font-size: 14px; color: #666;">
+        כאשר הדגל דולק, המערכת תשלוף מידע מבנים מהטווח בין התחלה לסיום, 
+        ותבטיח שגובה הטיסה לא יפחות מ-20 מטר מעל המבנה הגבוה ביותר.
+    </p>
+</details>
+
 <details>
 <summary>Research</summary>
-    <b>Payload effect</b><br>https://www.tytorobotics.com/blogs/articles/how-does-drone-payload-affect-flight-time<br>https://www.researchgate.net/figure/UAV-weight-and-payload-vs-flight-time_fig3_337948739 <br>
+    <b>Payload effect</b><br>https://www.tytorobotics.com/blogs/articles/how-does-drone-payload-affect-flight-time<br>https://www.researchgate.net/figure/UAV-weight-and-payload-vs-flight-time_fig3[...]
     <b>We should fly above 30m to reduce noise</b><br> "Determination of optimal flight altitude to minimise acoustic drone disturbance to wildlife using species audiograms
 " https://doi.org/10.1111/2041-210X.13691)<br>
    <b>Drifting equations</b> <br>
@@ -104,27 +140,27 @@ after one minute drifts almost the speed of the wind)  <br>
 
 
     <script>
-       function getLocation() {
-           if (navigator.geolocation) {
-               navigator.geolocation.getCurrentPosition(showPosition);
-              }
-           else {
-                x.innerHTML = "Geolocation is not supported by this browser.";
-                }
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(showPosition);
+               }
+            else {
+                 x.innerHTML = "Geolocation is not supported by this browser.";
+                 }
+        }
+    
+        function getHeight() {
+         calcHeight();      
+         var x = document.getElementById("result");
+         x.style.display = "block";
+
        }
-   
-       function getHeight() {
-        calcHeight();      
-        var x = document.getElementById("result");
-        x.style.display = "block";
-
-      }
 
 
-      function showPosition(position) {
-              //x.innerHTML = "Latitude: " + position.coords.latitude +  "<br>Longitude: " + position.coords.longitude;
-              moveToLocation(position.coords.latitude,  position.coords.longitude)
-              setstartloc(position.coords.latitude,  position.coords.longitude)
+       function showPosition(position) {
+               //x.innerHTML = "Latitude: " + position.coords.latitude +  "<br>Longitude: " + position.coords.longitude;
+               moveToLocation(position.coords.latitude,  position.coords.longitude)
+               setstartloc(position.coords.latitude,  position.coords.longitude)
 }
 </script>
 
@@ -150,7 +186,7 @@ after one minute drifts almost the speed of the wind)  <br>
  <div id="result" style="display:none">
 
 <b>Travel foreward at <span id="heightfore"> </span> m, and backward at <span id="heightback"> </span> m</b><br>
-Choosing optimal height is <b>better in <span id="savesec" ></span> seconds </b> (out of <span id="totaltime20"> </span>) than traveling @20 m height on both direction <span id="savepercent"> </span><br>     
+Choosing optimal height is <b>better in <span id="savesec" ></span> seconds </b> (out of <span id="totaltime20"> </span>) than traveling @20 m height on both direction <span id="savepercent"> </span><br>
 Distance: <span id="distance" ></span>m, drone direction: <span id="dronedir"> </span> degrees<br>
 Direction rose<br>
 180<br>
@@ -162,6 +198,7 @@ time without wind for both direction @20m: <span id="timenowind" ></span> sec<br
 @120m <span id="ws120"> </span> m/s <span id="wd120"> </span> degrees: time foreward: <span id="timefore120"> </span> sec , time backward:<span id="timeback120"> </span> sec<br>
 We only check between 20-120 meters<br>
 precipitation_probability <span id="precipitation_probability"></span>%, precipitation <span id="precipitation"></span>mm, visibility <span id="visibility"></span>km<br>
+<div id="buildingInfo"></div>
 </div>
 <br>
 Wind speed is taken from <a href="http://open-meteo.com" target="_blank">open-meteo.com</a><br>
@@ -171,6 +208,7 @@ Wind speed is taken from <a href="http://open-meteo.com" target="_blank">open-me
     2024/04/10 - When we come back, the payload should be 1<br>
     2024/04/05 - Adding a "share" button.<br>
     2024/03/31 - Starting "what's new" and "Todo".<br>
+    2024/09/10 - Added building clearance feature with Overpass API integration<br>
     <br>
 </details>
 
@@ -178,7 +216,6 @@ Wind speed is taken from <a href="http://open-meteo.com" target="_blank">open-me
 <summary>Todo</summary>
 <ul>
     <li> Add gradually change of speed due to drift.</li>
-    <li> Ask for the highest building, multiply by 3 meters. You should fly at least 20 meters above it</li>
     <li> Add a rule of thumb when flying above the buildings is better than between the buildings (the street often not parallel to the wind)</li>
 </ul>    
 </details>
@@ -204,7 +241,19 @@ Wind speed is taken from <a href="http://open-meteo.com" target="_blank">open-me
 <a class="a2a_button_google_gmail"></a>
 </div>
 <script async src="https://static.addtoany.com/menu/page.js"></script>
-<!-- AddToAny END -->';  
+<!-- AddToAny END -->
+
+<script>
+// סנכרון הדגל בהטעינת הדף
+document.addEventListener('DOMContentLoaded', function() {
+    const checkbox = document.getElementById('considerBuildings');
+    if (checkbox) {
+        checkbox.addEventListener('change', function() {
+            considerBuildings = this.checked;
+        });
+    }
+});
+</script>
     
     </body>
 </html>
