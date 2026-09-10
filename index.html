@@ -601,13 +601,13 @@ footer a:hover {
   <!-- Loading Indicator -->
   <div id="loadingIndicator">
     <div class="spinner"></div>
-    <p>Calculating optimal height...</p>
+    <p>Calculating optimal route...</p>
   </div>
 
   <!-- Info Section -->
   <div class="info-box">
     <i class="fas fa-info-circle"></i>
-    <strong>How it works:</strong> Select your start and destination points on the map, configure your drone settings, then click "Calculate Height" to get the optimal flight altitude considering wind conditions at different heights.
+    <strong>How it works:</strong> Select your start and destination points on the map, configure your drone settings, then click "Calculate Route" to find the safest and most efficient flight route and altitude considering wind conditions at different heights.
   </div>
 
   <!-- Map Card -->
@@ -637,9 +637,15 @@ footer a:hover {
         <span>Drone Configuration</span>
       </summary>
       <div style="padding-top: 20px;">
-        <div style="background: var(--light-bg); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+        <div class="form-group">
+           <label><i class="fas fa-drone"></i> Drone Model</label>
+           <select id="droneModel" style="width:100%; padding:12px 15px; border:2px solid var(--border-color); border-radius:8px; font-size:1em; font-family:'Inter',sans-serif; background:white; color:var(--text-primary);">
+             <option value="mavic3classic">DJI Mavic 3 Classic</option><option value="air3">DJI Air 3</option><option value="air3s">DJI Air 3S</option><option value="mini4pro">DJI Mini 4 Pro</option><option value="avata">DJI Avata</option><option value="custom">Custom</option>
+           </select>
+         </div>
+         <div style="background: var(--light-bg); padding: 15px; border-radius: 8px; margin-bottom: 20px;">
           <p style="margin: 0; color: var(--text-secondary); font-size: 0.9em;">
-            Specs based on <a href="https://www.dji.com/global/mavic-3-classic/specs" target="_blank" style="color: var(--primary);">DJI Mavic 3 Classic</a>
+            Select a drone model or enter custom performance values. Specifications are based on manufacturer data.
           </p>
         </div>
 
@@ -689,6 +695,8 @@ footer a:hover {
     </details>
   </div>
 
+  <div style="font-size:0.85em; color:var(--text-secondary); margin-top:-10px; margin-bottom:15px;">Manufacturer maximum speeds are used as reference values. Actual flight speed may be lower depending on flight mode, region, payload and conditions.</div>
+
   <!-- Building Clearance Card -->
   <div class="card">
     <details open>
@@ -714,7 +722,7 @@ footer a:hover {
   <!-- Calculate Button -->
   <div style="text-align: center; margin: 30px 0;">
     <button class="btn btn-primary" id="calculateBtn" style="font-size: 1.1em; padding: 16px 40px;">
-      <i class="fas fa-calculator"></i> Calculate Optimal Height
+      <i class="fas fa-calculator"></i> Calculate Optimal Route
     </button>
   </div>
 
@@ -913,7 +921,7 @@ footer a:hover {
 
 <!-- Footer -->
 <footer>
-  <p><strong>Drone Optimal Height Calculator</strong> | Powered by Wind Data from <a href="https://open-meteo.com" target="_blank">Open-Meteo</a></p>
+  <p><strong>Drone Optimal Route Planner</strong> | Powered by Wind Data from <a href="https://open-meteo.com" target="_blank">Open-Meteo</a></p>
   <p style="margin-top: 10px; font-size: 0.9em;">
     <a href="https://docs.google.com/forms/d/e/1FAIpQLScucpTGf_6hN_e8NQMgTJqoPX7q7B1HavnFdywewEtgMXFuNA/viewform?usp=sf_link" target="_blank">
       📧 Send Feedback & Suggestions
