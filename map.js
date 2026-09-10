@@ -363,6 +363,12 @@ async function calcHeight() {
     return;
 }
 
+// Export getHeight as public function
+window.getHeight = function() {
+  console.log('getHeight called');
+  calcHeight();
+};
+
        
 //Load the map when the page has finished loading.
 
