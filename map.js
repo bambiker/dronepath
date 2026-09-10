@@ -12,6 +12,8 @@
 var marker = 0; ////Has the user plotted their location marker?
 var lat1,lat2, lng1, lng2;
 var marker1, marker2, label1, label2;
+var considerBuildings = true; // דגל ברירת מחדל לבדיקת מבנים
+var maxBuildingHeight = 0; // גובה המבנה הגבוה ביותר בטווח
        
 //Function called to initialize / create the map.
 //This is called when the page has loaded.
@@ -89,8 +91,53 @@ function drift(){
 // v(t) = 1 / (a*t+(1/v0))
 }
 
+// פונקציה לשליפת מידע מבנים מ-Overpass API
+async function fetchBuildingsData(lat1, lon1, lat2, lon2) {
+  // חישוב הגבול (bounding box) של המלבן
+  const minLat = Math.min(lat1, lat2);
+  const maxLat = Math.max(lat1, lat2);
+  const minLon = Math.min(lon1, lon2);
+  const maxLon = Math.max(lon1, lon2);
+  
+  // הוספת margin קטן סביב הגבול
+  const margin = 0.001;
+  const bbox = `${minLat - margin},${minLon - margin},${maxLat + margin},${maxLon + margin}`;
+  
+  // Overpass API query - שליפת רק גובה המבנים (מינימום מידע)
+  const overpassQuery = `[out:json];(way["building"](${bbox});relation["building"](${bbox}););out geom(25);`;
+  const overpassUrl = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(overpassQuery)}`;
+  
+  try {
+    const response = await fetch(overpassUrl);
+    const data = await response.json();
+    
+    // מציאת גובה המבנה הגבוה ביותר
+    let maxHeight = 0;
+    
+    if (data.elements) {
+      data.elements.forEach(element => {
+        if (element.tags && element.tags.height) {
+          // המרת גובה לערך מספרי (יכול להיות בפורמטים שונים כמו "25m" או "25")
+          const heightStr = String(element.tags.height).match(/[\d.]+/);
+          if (heightStr) {
+            const height = parseFloat(heightStr[0]);
+            if (height > maxHeight) {
+              maxHeight = height;
+            }
+          }
+        }
+      });
+    }
+    
+    return maxHeight;
+  } catch (error) {
+    console.warn('שגיאה בשליפת נתוני מבנים:', error);
+    return 0; // במקרה של שגיאה, חזור 0
+  }
+}
+
 async function getJSON() {
-   const apiUrl = 'https://api.open-meteo.com/v1/forecast?latitude='+lat1+'&longitude='+lng1+'&hourly=wind_speed_10m,wind_speed_80m,wind_speed_120m,wind_speed_180m,wind_direction_10m,wind_direction_80m,wind_direction_120m,wind_direction_180m,visibility,precipitation_probability,precipitation&forecast_days=1';
+   const apiUrl = 'https://api.open-meteo.com/v1/forecast?latitude='+lat1+'&longitude='+lng1+'&hourly=wind_speed_10m,wind_speed_80m,wind_speed_120m,wind_speed_180m,wind_direction_10m,wind_direction_80m,wind_direction_120m,wind_direction_180m,precipitation_probability,precipitation,visibility&temperature_unit=celsius&wind_speed_unit=kmh&precipitation_unit=mm&timezone=auto';
 
     return fetch(apiUrl)
         .then((response)=>response.json())
@@ -103,6 +150,14 @@ async function calcHeight() {
        window.alert('please choose location');
        return;
         }
+    
+    // שליפת מידע מבנים אם הדגל דולק
+    if (considerBuildings) {
+      maxBuildingHeight = await fetchBuildingsData(lat1, lng1, lat2, lng2);
+    } else {
+      maxBuildingHeight = 0;
+    }
+    
     const json = await this.getJSON();  // command waits until completion
 
     const d = new Date();
@@ -146,8 +201,16 @@ visibility=json.hourly.visibility[hour-1];
     speedhorizontalback=document.getElementById('hor').value/document.getElementById('payloadback').value;
    
     drag=document.getElementById('drag').value
+    
+    // חישוב גובה מינימלי: מקס(20, מבנה גבוה ביותר + 20)
+    const minHeight = Math.max(20, maxBuildingHeight + 20);
    
-    heights = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]
+    // יצירת רשימת גבהים - התחלה מגובה המינימום
+    heights = [minHeight];
+    for (let i = minHeight + 10; i <= 120; i += 10) {
+      heights.push(i);
+    }
+    
     ws = []
     wd = []
     timeupdown = []
@@ -166,15 +229,15 @@ visibility=json.hourly.visibility[hour-1];
             wd[i]=wd80
             }
             else if (heights[i]==120)
-   {
-   ws[i]=ws120
-   wd[i]=wd120  
-   }
-   else
-   {
-   ws[i]=ws80*(120-heights[i])/40+ws120*(heights[i]-80)/40
-   wd[i]=wd80*(120-heights[i])/40+wd120*(heights[i]-80)/40
-   }
+    {
+    ws[i]=ws120
+    wd[i]=wd120  
+    }
+    else
+    {
+    ws[i]=ws80*(120-heights[i])/40+ws120*(heights[i]-80)/40
+    wd[i]=wd80*(120-heights[i])/40+wd120*(heights[i]-80)/40
+    }
 timeupdown[i] = (heights[i]/speedup)+(heights[i]/speeddown)
 timeupdownback[i] = (heights[i]/speedupback)+(heights[i]/speeddownback)
 diffangle=(wd[i]-dronedegrees)/180*Math.PI
@@ -200,17 +263,17 @@ timehorb[i] = dist / (speedhorizontalback-ws[i]*angle)
     // document.getElementById('windrose').innerHTML = wd[0].toFixed(tofixed)
     document.getElementById('timenowind').innerHTML = (timeupdown[0]+timeupdownback[0]+(dist / speedhorizontal)+(dist / speedhorizontalback)).toFixed(tofixed)
     document.getElementById('ws20').innerHTML = (ws[0]).toFixed(1)
-    document.getElementById('ws80').innerHTML = (ws[6]).toFixed(1)
-    document.getElementById('ws120').innerHTML = (ws[10]).toFixed(1)
+    document.getElementById('ws80').innerHTML = (ws[Math.floor((80-minHeight)/10)]).toFixed(1)
+    document.getElementById('ws120').innerHTML = (ws[heights.length-1]).toFixed(1)
     document.getElementById('wd20').innerHTML = (wd[0]).toFixed(0)
-    document.getElementById('wd80').innerHTML = (wd[6]).toFixed(0)
-    document.getElementById('wd120').innerHTML = (wd[10]).toFixed(0)
+    document.getElementById('wd80').innerHTML = (wd[Math.floor((80-minHeight)/10)]).toFixed(0)
+    document.getElementById('wd120').innerHTML = (wd[heights.length-1]).toFixed(0)
     document.getElementById('timefore20').innerHTML = (timeupdown[0]+timehor[0]).toFixed(tofixed)
     document.getElementById('timeback20').innerHTML = (timeupdownback[0]+timehorb[0]).toFixed(tofixed)
-    document.getElementById('timefore80').innerHTML = (timeupdown[6]+timehor[6]).toFixed(tofixed)
-    document.getElementById('timeback80').innerHTML = (timeupdownback[6]+timehorb[6]).toFixed(tofixed)
-    document.getElementById('timefore120').innerHTML = (timeupdown[10]+timehor[10]).toFixed(tofixed)
-    document.getElementById('timeback120').innerHTML = (timeupdownback[10]+timehorb[10]).toFixed(tofixed)
+    document.getElementById('timefore80').innerHTML = (timeupdown[Math.floor((80-minHeight)/10)]+timehor[Math.floor((80-minHeight)/10)]).toFixed(tofixed)
+    document.getElementById('timeback80').innerHTML = (timeupdownback[Math.floor((80-minHeight)/10)]+timehorb[Math.floor((80-minHeight)/10)]).toFixed(tofixed)
+    document.getElementById('timefore120').innerHTML = (timeupdown[heights.length-1]+timehor[heights.length-1]).toFixed(tofixed)
+    document.getElementById('timeback120').innerHTML = (timeupdownback[heights.length-1]+timehorb[heights.length-1]).toFixed(tofixed)
 
     travel20=timeupdown[0]+timeupdownback[0]+timehor[0]+timehorb[0]
     travelopt=timeupdown[minhor]+timehor[minhor]+timeupdownback[minhorb]+timehorb[minhorb]
@@ -222,6 +285,14 @@ timehorb[i] = dist / (speedhorizontalback-ws[i]*angle)
     document.getElementById('visibility').innerHTML = (visibility/1000).toFixed(0)
     document.getElementById('precipitation').innerHTML = precipitation.toFixed(1)
     document.getElementById('precipitation_probability').innerHTML = precipitation_probability.toFixed(0)
+    
+    // הצגת מידע מבנים אם זה רלוונטי
+    if (considerBuildings && maxBuildingHeight > 0) {
+      const buildingInfoDiv = document.getElementById('buildingInfo');
+      if (buildingInfoDiv) {
+        buildingInfoDiv.innerHTML = `<br><b>מידע מבנים:</b> גובה המבנה הגבוה ביותר: ${maxBuildingHeight.toFixed(1)}m, גובה מינימום הטיסה המומלץ: ${minHeight}m`;
+      }
+    }
    
     return;
 }
