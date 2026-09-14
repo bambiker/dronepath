@@ -65,6 +65,73 @@ function moveToLocation(lat, lng) {
   setstartloc(lat, lng);
 }
 
+
+// Get the user's current location and use it as the Start point.
+// If a Start marker already exists, move that marker instead of creating
+// another one. The Destination marker is preserved.
+function getLocation() {
+
+  clearError();
+
+  if (!navigator.geolocation) {
+    showError('Geolocation is not supported by your browser.');
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    function(position) {
+
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+
+      // Center the map on the user's location.
+      map.setView([lat, lng], 16);
+
+      if (marker1) {
+        // Move the existing Start marker.
+        marker1.setLatLng([lat, lng]);
+        markerLocation(1, marker1);
+      } else {
+        // Create the Start marker if one does not exist yet.
+        setstartloc(lat, lng);
+      }
+
+      // Make sure the Start marker is visible and clearly labeled.
+      if (marker1) {
+        marker1.bindTooltip('Start');
+        marker1.openTooltip();
+      }
+    },
+    function(error) {
+
+      let message = 'Unable to get your location.';
+
+      switch (error.code) {
+        case error.PERMISSION_DENIED:
+          message = 'Location permission was denied. Please allow location access in your browser and try again.';
+          break;
+
+        case error.POSITION_UNAVAILABLE:
+          message = 'Your location is currently unavailable. Please check your device location settings and try again.';
+          break;
+
+        case error.TIMEOUT:
+          message = 'The location request timed out. Please try again.';
+          break;
+      }
+
+      showError(message);
+      console.error('Geolocation error:', error);
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 60000
+    }
+  );
+}
+
+
 function setstartloc(lat, long) {
 
   if (marker === 0) { // new marker
@@ -175,7 +242,6 @@ function showError(message) {
   const errorDiv = document.getElementById('errorMessage');
 
   if (errorDiv) {
-
     errorDiv.innerHTML =
       `<b style="color: red;">⚠️ Error:</b> ${message}`;
 
@@ -191,7 +257,6 @@ function clearError() {
   const errorDiv = document.getElementById('errorMessage');
 
   if (errorDiv) {
-
     errorDiv.innerHTML = '';
     errorDiv.style.display = 'none';
   }
@@ -265,7 +330,6 @@ async function fetchBuildingsData(lat1, lon1, lat2, lon2) {
     let maxHeight = 0;
 
     if (data.elements) {
-
       data.elements.forEach(element => {
 
         if (element.tags && element.tags.height) {
@@ -350,455 +414,6 @@ async function getJSON() {
       return responseJson;
     });
 }
-
-
-async function calcHeight() {
-
-  clearError();
-  showLoading(true);
-
-  if (marker == 0) {
-
-    window.alert('Please choose a start location.');
-
-    showLoading(false);
-
-    return;
-  }
-
-  try {
-
-    // Fetch building data if enabled
-
-    if (considerBuildings) {
-
-      maxBuildingHeight =
-        await fetchBuildingsData(
-          lat1,
-          lng1,
-          lat2,
-          lng2
-        );
-
-    } else {
-
-      maxBuildingHeight = 0;
-    }
-
-
-    const json = await this.getJSON();
-
-
-    const d = new Date();
-
-    let hour = d.getUTCHours();
-
-    var mydata =
-      JSON.stringify(json, null, 2);
-
-
-    ws10 =
-      json.hourly.wind_speed_10m[hour - 1] / 3.6;
-
-    ws80 =
-      json.hourly.wind_speed_80m[hour - 1] / 3.6;
-
-    ws120 =
-      json.hourly.wind_speed_120m[hour - 1] / 3.6;
-
-
-    wd10 =
-      json.hourly.wind_direction_10m[hour - 1];
-
-    wd80 =
-      json.hourly.wind_direction_80m[hour - 1];
-
-    wd120 =
-      json.hourly.wind_direction_120m[hour - 1];
-
-
-    precipitation_probability =
-      json.hourly.precipitation_probability[hour - 1];
-
-    precipitation =
-      json.hourly.precipitation[hour - 1];
-
-    visibility =
-      json.hourly.visibility[hour - 1];
-
-
-    if (marker == 1) {
-
-      lat2 = lat1;
-      lng2 = lng1;
-    }
-
-
-    startlat = lat1;
-    startlng = lng1;
-
-    destlat = lat2;
-    destlng = lng2;
-
-
-    difflat =
-      startlat - destlat;
-
-    difflng =
-      startlng - destlng;
-
-
-    var dronedegrees =
-      Math.atan2(
-        difflng,
-        difflat
-      ) *
-      180 /
-      3.14159265;
-
-    dronedegrees =
-      (dronedegrees + 360) % 360;
-
-
-    dist =
-      getDistanceFromLatLon(
-        startlat,
-        startlng,
-        destlat,
-        destlng
-      );
-
-
-    speedup =
-      document.getElementById('asc').value /
-      document.getElementById('payload').value;
-
-    speeddown =
-      document.getElementById('des').value /
-      document.getElementById('payload').value;
-
-    speedhorizontal =
-      document.getElementById('hor').value /
-      document.getElementById('payload').value;
-
-
-    speedupback =
-      document.getElementById('asc').value /
-      document.getElementById('payloadback').value;
-
-    speeddownback =
-      document.getElementById('des').value /
-      document.getElementById('payloadback').value;
-
-    speedhorizontalback =
-      document.getElementById('hor').value /
-      document.getElementById('payloadback').value;
-
-
-    drag =
-      document.getElementById('drag').value;
-
-
-    // Calculate minimum altitude:
-    // max(20, highest building + 20)
-
-    const minHeight =
-      Math.max(
-        20,
-        maxBuildingHeight + 20
-      );
-
-
-    // Create candidate altitudes starting at the minimum
-
-    heights = [minHeight];
-
-    for (
-      let i = minHeight + 10;
-      i <= 120;
-      i += 10
-    ) {
-
-      heights.push(i);
-    }
-
-
-    ws = [];
-    wd = [];
-
-    timeupdown = [];
-    timeupdownback = [];
-
-    timehor = [];
-    timehorb = [];
-
-
-    // Maximum allowed wind speed is 80% of the drone's
-    // effective horizontal speed.
-    //
-    // Both outbound and return speeds must satisfy the limit.
-
-    const maxAllowedWind =
-      0.8 *
-      Math.min(
-        speedhorizontal,
-        speedhorizontalback
-      );
-
-
-    const flyableHeights = [];
-
-
-    for (
-      i = 0;
-      i < heights.length;
-      i++
-    ) {
-
-      if (heights[i] < 80) {
-
-        ws[i] =
-          ws10 *
-          (80 - heights[i]) /
-          70
-          +
-          ws80 *
-          (heights[i] - 10) /
-          70;
-
-
-        wd[i] =
-          wd10 *
-          (80 - heights[i]) /
-          70
-          +
-          wd80 *
-          (heights[i] - 10) /
-          70;
-
-      }
-
-      else if (heights[i] == 80) {
-
-        ws[i] = ws80;
-        wd[i] = wd80;
-
-      }
-
-      else if (heights[i] == 120) {
-
-        ws[i] = ws120;
-        wd[i] = wd120;
-
-      }
-
-      else {
-
-        ws[i] =
-          ws80 *
-          (120 - heights[i]) /
-          40
-          +
-          ws120 *
-          (heights[i] - 80) /
-          40;
-
-
-        wd[i] =
-          wd80 *
-          (120 - heights[i]) /
-          40
-          +
-          wd120 *
-          (heights[i] - 80) /
-          40;
-      }
-
-
-      timeupdown[i] =
-        (heights[i] / speedup) +
-        (heights[i] / speeddown);
-
-
-      timeupdownback[i] =
-        (heights[i] / speedupback) +
-        (heights[i] / speeddownback);
-
-
-      // Do not offer an altitude when wind exceeds
-      // 80% of the drone speed.
-
-      if (ws[i] <= maxAllowedWind) {
-
-        diffangle =
-          (wd[i] - dronedegrees) /
-          180 *
-          Math.PI;
-
-
-        angle =
-          Math.cos(diffangle) *
-          drag;
-
-
-        const groundSpeedForward =
-          speedhorizontal +
-          ws[i] * angle;
-
-
-        const groundSpeedBack =
-          speedhorizontalback -
-          ws[i] * angle;
-
-
-        if (
-          groundSpeedForward > 0 &&
-          groundSpeedBack > 0
-        ) {
-
-          timehor[i] =
-            dist /
-            groundSpeedForward;
-
-
-          timehorb[i] =
-            dist /
-            groundSpeedBack;
-
-
-          flyableHeights.push(i);
-
-        } else {
-
-          timehor[i] = Infinity;
-          timehorb[i] = Infinity;
-        }
-
-      } else {
-
-        timehor[i] = Infinity;
-        timehorb[i] = Infinity;
-      }
-    }
-
-
-    // No altitude is safe enough under the current wind conditions.
-
-    if (flyableHeights.length === 0) {
-
-      showError(
-        `<b>⛔ Flight not allowed under the current wind conditions.</b><br>` +
-        `Maximum allowed wind speed: ${maxAllowedWind.toFixed(1)} m/s ` +
-        `(80% of the drone's effective speed).`
-      );
-
-      document.getElementById('result').style.display =
-        'none';
-
-      return;
-    }
-
-
-    // Find the fastest outbound and return altitude.
-
-    minhor =
-      flyableHeights[0];
-
-    minhorb =
-      flyableHeights[0];
-
-
-    for (const idx of flyableHeights) {
-
-      if (
-        timeupdown[idx] +
-        timehor[idx]
-        <
-        timeupdown[minhor] +
-        timehor[minhor]
-      ) {
-
-        minhor = idx;
-      }
-
-
-      if (
-        timeupdownback[idx] +
-        timehorb[idx]
-        <
-        timeupdownback[minhorb] +
-        timehorb[minhorb]
-      ) {
-
-        minhorb = idx;
-      }
-    }
-
-
-    tofixed = 0;
-
-
-    document.getElementById('heightfore').innerHTML =
-      heights[minhor].toFixed(tofixed);
-
-
-    document.getElementById('heightback').innerHTML =
-      heights[minhorb].toFixed(tofixed);
-
-
-    document.getElementById('distance').innerHTML =
-      dist.toFixed(tofixed);
-
-
-    document.getElementById('dronedir').innerHTML =
-      dronedegrees.toFixed(tofixed);
-
-
-    document.getElementById('timenowind').innerHTML =
-      (
-        timeupdown[0] +
-        timeupdownback[0] +
-        (dist / speedhorizontal) +
-        (dist / speedhorizontalback)
-      ).toFixed(tofixed);
-
-
-    document.getElementById('ws20').innerHTML =
-      ws[0].toFixed(1);
-
-
-    document.getElementById('ws80').innerHTML =
-      ws[
-        Math.floor(
-          (80 - minHeight) / 10
-        )
-      ].toFixed(1);
-
-
-    document.getElementById('ws120').innerHTML =
-      ws[
-        heights.length - 1
-      ].toFixed(1);
-
-
-    document.getElementById('wd20').innerHTML =
-      wd[0].toFixed(0);
-
-
-    document.getElementById('wd80').innerHTML =
-      wd[
-        Math.floor(
-          (80 - minHeight) / 10
-        )
-      ].toFixed(0);
-
-
-    document.getElementById('wd120').innerHTML =
-      wd[
-        heights.length - 1
-      ].toFixed(0);
-
-
     document.getElementById('timefore20').innerHTML =
       (
         timeupdown[0] +
@@ -917,7 +532,6 @@ async function calcHeight() {
 
 
     // Display building information when relevant
-
     if (
       considerBuildings &&
       maxBuildingHeight > 0
@@ -967,6 +581,7 @@ async function calcHeight() {
   } finally {
 
     showLoading(false);
+
   }
 
   return;
@@ -980,6 +595,7 @@ window.getHeight = function() {
   console.log('getHeight called');
 
   calcHeight();
+
 };
 
 
@@ -1038,11 +654,9 @@ function addMarker(e) {
         }
       ).addTo(map);
 
-
     marker1.bindTooltip(
       "Start"
     );
-
 
     markerLocation(
       1,
@@ -1084,11 +698,9 @@ function addMarker(e) {
           }
         ).addTo(map);
 
-
       marker2.bindTooltip(
         "Destination"
       );
-
 
       markerLocation(
         2,
