@@ -146,7 +146,114 @@ function markUnsafe(id, unsafe, reason){
   el.title = unsafe ? reason : '';
 }
 
+// ---------------------------------------------------------------
+// Building clearance (OpenStreetMap via the Overpass API)
+//
+// We ask Overpass only for buildings inside a narrow rectangle that
+// hugs the straight-line route (not a big bounding box), and only for
+// their tags + center point rather than full outlines - that keeps
+// the download small regardless of how long the route is.
+// ---------------------------------------------------------------
+
+var BUILDING_CORRIDOR_HALF_WIDTH_M = 60; // 120 m wide corridor around the route
+var BUILDING_HEIGHT_FALLBACK_M = 7;      // ~2 storeys, used when a building has no height/levels tag
+var BUILDING_TYPE_HEIGHT_M = {
+  garage: 3, garages: 3, shed: 3, roof: 3, hut: 3, carport: 3,
+  house: 7, residential: 7, detached: 7, terrace: 7, semidetached_house: 7, bungalow: 5,
+  apartments: 12, commercial: 10, industrial: 10, retail: 8, office: 12, warehouse: 9
+};
+
+function rad2deg(rad){
+  return rad * (180 / Math.PI);
+}
+
+// Destination point at `distMeters` from (lat,lng) along `bearingDeg`
+// (standard spherical "direct geodesic" formula, same Earth radius
+// used elsewhere in this file).
+function offsetLatLng(lat, lng, bearingDeg, distMeters){
+  var R = 6371000;
+  var brng = deg2rad(bearingDeg);
+  var lat1r = deg2rad(lat);
+  var lon1r = deg2rad(lng);
+  var dOverR = distMeters / R;
+  var lat2r = Math.asin(Math.sin(lat1r) * Math.cos(dOverR) + Math.cos(lat1r) * Math.sin(dOverR) * Math.cos(brng));
+  var lon2r = lon1r + Math.atan2(Math.sin(brng) * Math.sin(dOverR) * Math.cos(lat1r), Math.cos(dOverR) - Math.sin(lat1r) * Math.sin(lat2r));
+  return { lat: rad2deg(lat2r), lng: rad2deg(lon2r) };
+}
+
+// A thin rectangle hugging the start->destination line, used as the
+// Overpass search area. Falls back to a small square around the start
+// point when there's no real route yet (start and destination match).
+function routeCorridorPolygon(lat1, lng1, lat2, lng2, bearingDeg, halfWidthM){
+  var distM = getDistanceFromLatLon(lat1, lng1, lat2, lng2);
+  if (distM < 10){
+    var r = Math.max(halfWidthM, 100);
+    var n = offsetLatLng(lat1, lng1, 0, r);
+    var e = offsetLatLng(lat1, lng1, 90, r);
+    var s = offsetLatLng(lat1, lng1, 180, r);
+    var w = offsetLatLng(lat1, lng1, 270, r);
+    return [n, e, s, w];
+  }
+  var p1 = offsetLatLng(lat1, lng1, bearingDeg + 90, halfWidthM);
+  var p2 = offsetLatLng(lat2, lng2, bearingDeg + 90, halfWidthM);
+  var p3 = offsetLatLng(lat2, lng2, bearingDeg - 90, halfWidthM);
+  var p4 = offsetLatLng(lat1, lng1, bearingDeg - 90, halfWidthM);
+  return [p1, p2, p3, p4];
+}
+
+function parseMetersTag(value){
+  if (value === undefined || value === null) return null;
+  var n = parseFloat(String(value).replace(',', '.'));
+  return isNaN(n) ? null : n;
+}
+
+// Best-effort height for a building from its OSM tags: explicit
+// height, then level count (~3 m/level), then a type-based guess,
+// then a generic fallback for untagged buildings.
+function estimateBuildingHeight(tags){
+  tags = tags || {};
+  var explicit = parseMetersTag(tags.height);
+  if (explicit === null) explicit = parseMetersTag(tags['building:height']);
+  if (explicit !== null) return explicit;
+
+  var levels = parseMetersTag(tags['building:levels']);
+  if (levels === null) levels = parseMetersTag(tags.levels);
+  if (levels !== null) return levels * 3;
+
+  var type = (tags.building || '').toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(BUILDING_TYPE_HEIGHT_M, type)) return BUILDING_TYPE_HEIGHT_M[type];
+
+  return BUILDING_HEIGHT_FALLBACK_M;
+}
+
+// Fetches buildings in a narrow corridor around the route and returns
+// { count, maxHeight } in meters, or throws on a network/API failure
+// (the caller decides how to degrade).
+async function getBuildingsNearRoute(lat1, lng1, lat2, lng2, bearingDeg){
+  var polygon = routeCorridorPolygon(lat1, lng1, lat2, lng2, bearingDeg, BUILDING_CORRIDOR_HALF_WIDTH_M);
+  var polyStr = polygon.map(function(p){ return p.lat + ' ' + p.lng; }).join(' ');
+  var query = '[out:json][timeout:25];way["building"](poly:"' + polyStr + '");out tags center;';
+
+  var response = await fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'data=' + encodeURIComponent(query)
+  });
+  if (!response.ok){
+    throw new Error('Overpass request failed: ' + response.status);
+  }
+  var data = await response.json();
+  var elements = data.elements || [];
+  var maxHeight = 0;
+  for (var i = 0; i < elements.length; i++){
+    var h = estimateBuildingHeight(elements[i].tags);
+    if (h > maxHeight) maxHeight = h;
+  }
+  return { count: elements.length, maxHeight: maxHeight };
+}
+
 async function getJSON() {
+
    const apiUrl = 'https://api.open-meteo.com/v1/forecast?latitude='+lat1+'&longitude='+lng1+'&hourly=wind_speed_10m,wind_speed_80m,wind_speed_120m,wind_speed_180m,wind_direction_10m,wind_direction_80m,wind_direction_120m,wind_direction_180m,visibility,precipitation_probability,precipitation&forecast_days=1';
 
     return fetch(apiUrl)
@@ -325,7 +432,31 @@ async function calcHeight() {
        window.alert('please choose location');
        return;
         }
-    const json = await this.getJSON();  // command waits until completion
+
+    if (marker==1)
+        {lat2=lat1;
+         lng2=lng1;
+        }
+    startlat=lat1;
+    startlng=lng1;
+    destlat=lat2;
+    destlng=lng2;
+    difflat=startlat-destlat;
+    difflng=startlng-destlng;
+    var dronedegrees = Math.atan2(difflng, difflat) * 180 / 3.14159265;
+    dronedegrees = (dronedegrees + 360) % 360;  // +360 for implementations where mod returns negative numbers
+    dist=getDistanceFromLatLon(startlat,startlng,destlat, destlng);
+
+    // Kick both network calls off together - wind from open-meteo, and
+    // nearby building heights from OpenStreetMap's Overpass API. A
+    // failed building lookup shouldn't block the wind calculation, so
+    // it's caught locally and treated as "no data".
+    const windPromise = this.getJSON();
+    const buildingsPromise = getBuildingsNearRoute(startlat, startlng, destlat, destlng, dronedegrees)
+        .catch(function(err){ console.warn('Building lookup failed:', err); return null; });
+
+    const json = await windPromise;  // command waits until completion
+    const buildings = await buildingsPromise;
 
     const d = new Date();
     let hour = d.getUTCHours();
@@ -341,19 +472,6 @@ precipitation_probability=json.hourly.precipitation_probability[hour-1];
 precipitation=json.hourly.precipitation[hour-1];
 visibility=json.hourly.visibility[hour-1];
 
-    if (marker==1)
-        {lat2=lat1;
-         lng2=lng1;
-        }
-    startlat=lat1;
-    startlng=lng1;
-    destlat=lat2;
-    destlng=lng2;
-    difflat=startlat-destlat;
-    difflng=startlng-destlng;
-    var dronedegrees = Math.atan2(difflng, difflat) * 180 / 3.14159265;
-    dronedegrees = (dronedegrees + 360) % 360;  // +360 for implementations where mod returns negative numbers
-    dist=getDistanceFromLatLon(startlat,startlng,destlat, destlng);
 //    window.alert(dronedegrees);
 //    window.alert(dist);
 
@@ -407,13 +525,19 @@ timehorb[i] = dist / (speedhorizontalback-ws[i]*angle)
 
     // A height isn't flyable for a leg if the wind speed there meets
     // or exceeds the drone's horizontal speed for that leg (loaded
-    // outbound, or with the return payload) - the drone couldn't make
-    // reliable headway against it.
+    // outbound, or with the return payload), or if it's below the
+    // minimum clearance above the tallest building OSM knows about
+    // near this route.
+    var maxBuildingHeight = buildings ? buildings.maxHeight : 0;
+    var minSafeAltitude = maxBuildingHeight > 0 ? (maxBuildingHeight + 20) : 20;
+
     flyableOut = []
     flyableBack = []
+    buildingOk = []
     for (i=0;i<heights.length; i++) {
-        flyableOut[i] = ws[i] < speedhorizontal
-        flyableBack[i] = ws[i] < speedhorizontalback
+        buildingOk[i] = heights[i] >= minSafeAltitude
+        flyableOut[i] = ws[i] < speedhorizontal && buildingOk[i]
+        flyableBack[i] = ws[i] < speedhorizontalback && buildingOk[i]
     }
 
     minhor = -1
@@ -449,15 +573,33 @@ timehorb[i] = dist / (speedhorizontalback-ws[i]*angle)
 
     var unsafeReasonOut = "Wind here is at or above this drone's outbound horizontal speed - not safe to fly this leg at this height.";
     var unsafeReasonBack = "Wind here is at or above this drone's return horizontal speed - not safe to fly this leg at this height.";
-    markUnsafe('timefore20', !flyableOut[0], unsafeReasonOut)
-    markUnsafe('timeback20', !flyableBack[0], unsafeReasonBack)
-    markUnsafe('timefore80', !flyableOut[6], unsafeReasonOut)
-    markUnsafe('timeback80', !flyableBack[6], unsafeReasonBack)
-    markUnsafe('timefore120', !flyableOut[10], unsafeReasonOut)
-    markUnsafe('timeback120', !flyableBack[10], unsafeReasonBack)
-    markUnsafe('ws20', !flyableOut[0] || !flyableBack[0], "Wind here is at or above this drone's horizontal speed for at least one leg.")
-    markUnsafe('ws80', !flyableOut[6] || !flyableBack[6], "Wind here is at or above this drone's horizontal speed for at least one leg.")
-    markUnsafe('ws120', !flyableOut[10] || !flyableBack[10], "Wind here is at or above this drone's horizontal speed for at least one leg.")
+    var unsafeReasonBuilding = "Below the minimum safe height above buildings on this route (min " + minSafeAltitude.toFixed(0) + " m).";
+    function cellReason(idx, windOk, windMsg){
+        if (!buildingOk[idx]) return unsafeReasonBuilding;
+        if (!windOk) return windMsg;
+        return '';
+    }
+    markUnsafe('timefore20', !flyableOut[0], cellReason(0, ws[0]<speedhorizontal, unsafeReasonOut))
+    markUnsafe('timeback20', !flyableBack[0], cellReason(0, ws[0]<speedhorizontalback, unsafeReasonBack))
+    markUnsafe('timefore80', !flyableOut[6], cellReason(6, ws[6]<speedhorizontal, unsafeReasonOut))
+    markUnsafe('timeback80', !flyableBack[6], cellReason(6, ws[6]<speedhorizontalback, unsafeReasonBack))
+    markUnsafe('timefore120', !flyableOut[10], cellReason(10, ws[10]<speedhorizontal, unsafeReasonOut))
+    markUnsafe('timeback120', !flyableBack[10], cellReason(10, ws[10]<speedhorizontalback, unsafeReasonBack))
+    markUnsafe('ws20', !flyableOut[0] || !flyableBack[0], !buildingOk[0] ? unsafeReasonBuilding : "Wind here is at or above this drone's horizontal speed for at least one leg.")
+    markUnsafe('ws80', !flyableOut[6] || !flyableBack[6], !buildingOk[6] ? unsafeReasonBuilding : "Wind here is at or above this drone's horizontal speed for at least one leg.")
+    markUnsafe('ws120', !flyableOut[10] || !flyableBack[10], !buildingOk[10] ? unsafeReasonBuilding : "Wind here is at or above this drone's horizontal speed for at least one leg.")
+
+    var buildingInfo = document.getElementById('buildingInfo')
+    buildingInfo.classList.remove('warning-hint')
+    if (buildings === null){
+        buildingInfo.innerHTML = "Couldn't load building data from OpenStreetMap for this route, so only wind is being checked right now &mdash; heights below 20 m above nearby buildings might not actually be safe."
+        buildingInfo.classList.add('warning-hint')
+    } else if (buildings.count === 0){
+        buildingInfo.innerHTML = "No buildings found near this route in OpenStreetMap, so no extra height is needed for obstacle clearance."
+    } else {
+        buildingInfo.innerHTML = "Checked " + buildings.count + " building" + (buildings.count===1?'':'s') + " from OpenStreetMap near this route &mdash; the tallest is about " + maxBuildingHeight.toFixed(0) + " m, so we won't recommend flying below " + minSafeAltitude.toFixed(0) + " m."
+    }
+    buildingInfo.style.display = 'block'
 
     var flyWarning = document.getElementById('flyWarning')
     var savingsText = document.getElementById('savingsText')
@@ -477,7 +619,24 @@ timehorb[i] = dist / (speedhorizontalback-ws[i]*angle)
         var legs = []
         if (minhor===-1) legs.push('outbound')
         if (minhorb===-1) legs.push('return')
-        flyWarning.innerHTML = "Wind is as strong as, or stronger than, this drone's horizontal speed at every altitude between 20 and 120 m on the " + legs.join(' and ') + " leg. We can't recommend a safe height here &mdash; consider a faster drone, a different time, or don't fly."
+
+        var reasonBits = []
+        if (minSafeAltitude > 120){
+            reasonBits.push("buildings along the route need about " + minSafeAltitude.toFixed(0) + " m of clearance, above the 120 m ceiling we check")
+        }
+        var windBlocksOut = true, windBlocksBack = true
+        for (i=0;i<heights.length; i++){
+            if (ws[i] < speedhorizontal) windBlocksOut = false
+            if (ws[i] < speedhorizontalback) windBlocksBack = false
+        }
+        if ((legs.indexOf('outbound')>-1 && windBlocksOut) || (legs.indexOf('return')>-1 && windBlocksBack)){
+            reasonBits.push("wind matches or beats the drone's speed at every height we can still check")
+        }
+        if (reasonBits.length===0){
+            reasonBits.push("no height between 20 and 120 m clears both the wind and the buildings on this route")
+        }
+
+        flyWarning.innerHTML = "We can't recommend a safe height for the " + legs.join(' and ') + " leg: " + reasonBits.join(' and ') + ". Consider a faster drone, a different time, or don't fly."
         flyWarning.style.display = 'block'
     }
 
