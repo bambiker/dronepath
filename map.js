@@ -108,11 +108,11 @@ function drift(){
 // ---------------------------------------------------------------
 
 var DRONE_PRESETS = {
-  mavic3classic: { name: 'DJI Mavic 3 Classic', hor: 21, asc: 8, des: 6 },
-  mini4pro:      { name: 'DJI Mini 4 Pro',       hor: 16, asc: 5, des: 5 },
-  air3:          { name: 'DJI Air 3',            hor: 21, asc: 10, des: 10 },
-  matrice300:    { name: 'DJI Matrice 300 RTK',  hor: 23, asc: 6, des: 5 },
-  evolite:       { name: 'Autel EVO Lite+',      hor: 18, asc: 5, des: 4 }
+  mavic3classic: { name: 'DJI Mavic 3 Classic', hor: 21, asc: 8, des: 6, windres: 12 },
+  mini4pro:      { name: 'DJI Mini 4 Pro',       hor: 16, asc: 5, des: 5, windres: 10.7 },
+  air3:          { name: 'DJI Air 3',            hor: 21, asc: 10, des: 10, windres: 12 },
+  matrice300:    { name: 'DJI Matrice 300 RTK',  hor: 23, asc: 6, des: 5, windres: 12 },
+  evolite:       { name: 'Autel EVO Lite+',      hor: 18, asc: 5, des: 4, windres: 10.6 }
 };
 
 function applyDronePreset(){
@@ -122,6 +122,7 @@ function applyDronePreset(){
   document.getElementById('hor').value = preset.hor;
   document.getElementById('asc').value = preset.asc;
   document.getElementById('des').value = preset.des;
+  document.getElementById('windres').value = preset.windres;
 }
 
 // If the person hand-edits a speed field away from the selected
@@ -134,7 +135,8 @@ function checkCustom(){
   var hor = parseFloat(document.getElementById('hor').value);
   var asc = parseFloat(document.getElementById('asc').value);
   var des = parseFloat(document.getElementById('des').value);
-  if (hor !== preset.hor || asc !== preset.asc || des !== preset.des){
+  var windres = parseFloat(document.getElementById('windres').value);
+  if (hor !== preset.hor || asc !== preset.asc || des !== preset.des || windres !== preset.windres){
     sel.value = 'custom';
   }
 }
@@ -254,7 +256,7 @@ async function getBuildingsNearRoute(lat1, lng1, lat2, lng2, bearingDeg){
 
 async function getJSON() {
 
-   const apiUrl = 'https://api.open-meteo.com/v1/forecast?latitude='+lat1+'&longitude='+lng1+'&hourly=wind_speed_10m,wind_speed_80m,wind_speed_120m,wind_speed_180m,wind_direction_10m,wind_direction_80m,wind_direction_120m,wind_direction_180m,visibility,precipitation_probability,precipitation&forecast_days=1';
+   const apiUrl = 'https://api.open-meteo.com/v1/forecast?latitude='+lat1+'&longitude='+lng1+'&hourly=wind_speed_10m,wind_speed_80m,wind_speed_120m,wind_speed_180m,wind_direction_10m,wind_direction_80m,wind_direction_120m,wind_direction_180m,wind_gusts_10m,visibility,precipitation_probability,precipitation&forecast_days=1';
 
     return fetch(apiUrl)
         .then((response)=>response.json())
@@ -468,9 +470,17 @@ ws120=json.hourly.wind_speed_120m[hour-1]/3.6; //array start at zero
 wd10=json.hourly.wind_direction_10m[hour-1]; //array start at zero
 wd80=json.hourly.wind_direction_80m[hour-1]; //array start at zero
 wd120=json.hourly.wind_direction_120m[hour-1]; //array start at zero
+gust10=json.hourly.wind_gusts_10m[hour-1]/3.6;
 precipitation_probability=json.hourly.precipitation_probability[hour-1];
 precipitation=json.hourly.precipitation[hour-1];
 visibility=json.hourly.visibility[hour-1];
+
+// Gusts are only forecast at 10m. We estimate gusts at other heights
+// by applying the same gustiness ratio (gust/average at 10m) to the
+// average wind there - clamped so a near-calm 10m reading (division
+// by ~0) can't blow the ratio up unrealistically.
+gustFactor = (ws10 > 0.1) ? (gust10 / ws10) : 1;
+gustFactor = Math.min(Math.max(gustFactor, 1), 3);
 
 //    window.alert(dronedegrees);
 //    window.alert(dist);
@@ -494,6 +504,8 @@ visibility=json.hourly.visibility[hour-1];
     timeupdownback = []
     timehor = []
     timehorb = []
+    estgust = []
+    crosswind = []
     for (i=0;i<heights.length; i++) {
     if (heights[i]<80)
             {
@@ -521,23 +533,38 @@ diffangle=(wd[i]-dronedegrees)/180*Math.PI
 angle = Math.cos(diffangle)*drag
 timehor[i] = dist /  (speedhorizontal+ws[i]*angle)
 timehorb[i] = dist / (speedhorizontalback-ws[i]*angle)
+// Gust extrapolated from the 10m gust/average ratio, and the
+// crosswind component (perpendicular to heading) of the average
+// wind - used below as separate flyability checks.
+estgust[i] = ws[i] * gustFactor
+crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
     }
 
-    // A height isn't flyable for a leg if the wind speed there meets
-    // or exceeds the drone's horizontal speed for that leg (loaded
-    // outbound, or with the return payload), or if it's below the
-    // minimum clearance above the tallest building OSM knows about
-    // near this route.
+    // A height isn't flyable if:
+    //  - it's below the minimum clearance above the tallest building
+    //    OSM knows about near this route, or
+    //  - the estimated gust there meets or exceeds the drone's rated
+    //    max wind resistance (an airframe limit, same for both legs), or
+    //  - the crosswind component of the average wind meets or exceeds
+    //    the drone's horizontal speed for that leg - beyond that point
+    //    the drone can't hold its course at all, regardless of speed.
     var maxBuildingHeight = buildings ? buildings.maxHeight : 0;
     var minSafeAltitude = maxBuildingHeight > 0 ? (maxBuildingHeight + 20) : 20;
+    var windResistance = parseFloat(document.getElementById('windres').value);
 
     flyableOut = []
     flyableBack = []
     buildingOk = []
+    windResOk = []
+    crosswindOkOut = []
+    crosswindOkBack = []
     for (i=0;i<heights.length; i++) {
         buildingOk[i] = heights[i] >= minSafeAltitude
-        flyableOut[i] = ws[i] < speedhorizontal && buildingOk[i]
-        flyableBack[i] = ws[i] < speedhorizontalback && buildingOk[i]
+        windResOk[i] = estgust[i] < windResistance
+        crosswindOkOut[i] = speedhorizontal > crosswind[i]
+        crosswindOkBack[i] = speedhorizontalback > crosswind[i]
+        flyableOut[i] = buildingOk[i] && windResOk[i] && crosswindOkOut[i]
+        flyableBack[i] = buildingOk[i] && windResOk[i] && crosswindOkBack[i]
     }
 
     minhor = -1
@@ -561,6 +588,9 @@ timehorb[i] = dist / (speedhorizontalback-ws[i]*angle)
     document.getElementById('ws20').innerHTML = (ws[0]).toFixed(1)
     document.getElementById('ws80').innerHTML = (ws[6]).toFixed(1)
     document.getElementById('ws120').innerHTML = (ws[10]).toFixed(1)
+    document.getElementById('gust20').innerHTML = (estgust[0]).toFixed(1)
+    document.getElementById('gust80').innerHTML = (estgust[6]).toFixed(1)
+    document.getElementById('gust120').innerHTML = (estgust[10]).toFixed(1)
     document.getElementById('wd20').innerHTML = (wd[0]).toFixed(0)
     document.getElementById('wd80').innerHTML = (wd[6]).toFixed(0)
     document.getElementById('wd120').innerHTML = (wd[10]).toFixed(0)
@@ -571,23 +601,28 @@ timehorb[i] = dist / (speedhorizontalback-ws[i]*angle)
     document.getElementById('timefore120').innerHTML = (timeupdown[10]+timehor[10]).toFixed(tofixed)
     document.getElementById('timeback120').innerHTML = (timeupdownback[10]+timehorb[10]).toFixed(tofixed)
 
-    var unsafeReasonOut = "Wind here is at or above this drone's outbound horizontal speed - not safe to fly this leg at this height.";
-    var unsafeReasonBack = "Wind here is at or above this drone's return horizontal speed - not safe to fly this leg at this height.";
     var unsafeReasonBuilding = "Below the minimum safe height above buildings on this route (min " + minSafeAltitude.toFixed(0) + " m).";
-    function cellReason(idx, windOk, windMsg){
+    var unsafeReasonGust = "Estimated gust here is at or above this drone's rated wind resistance (" + windResistance.toFixed(1) + " m/s).";
+    var unsafeReasonCrossOut = "The crosswind component here is at or above this drone's outbound speed - it couldn't hold this course.";
+    var unsafeReasonCrossBack = "The crosswind component here is at or above this drone's return speed - it couldn't hold this course.";
+    function cellReason(idx, crosswindOk, crossMsg){
         if (!buildingOk[idx]) return unsafeReasonBuilding;
-        if (!windOk) return windMsg;
+        if (!windResOk[idx]) return unsafeReasonGust;
+        if (!crosswindOk) return crossMsg;
         return '';
     }
-    markUnsafe('timefore20', !flyableOut[0], cellReason(0, ws[0]<speedhorizontal, unsafeReasonOut))
-    markUnsafe('timeback20', !flyableBack[0], cellReason(0, ws[0]<speedhorizontalback, unsafeReasonBack))
-    markUnsafe('timefore80', !flyableOut[6], cellReason(6, ws[6]<speedhorizontal, unsafeReasonOut))
-    markUnsafe('timeback80', !flyableBack[6], cellReason(6, ws[6]<speedhorizontalback, unsafeReasonBack))
-    markUnsafe('timefore120', !flyableOut[10], cellReason(10, ws[10]<speedhorizontal, unsafeReasonOut))
-    markUnsafe('timeback120', !flyableBack[10], cellReason(10, ws[10]<speedhorizontalback, unsafeReasonBack))
-    markUnsafe('ws20', !flyableOut[0] || !flyableBack[0], !buildingOk[0] ? unsafeReasonBuilding : "Wind here is at or above this drone's horizontal speed for at least one leg.")
-    markUnsafe('ws80', !flyableOut[6] || !flyableBack[6], !buildingOk[6] ? unsafeReasonBuilding : "Wind here is at or above this drone's horizontal speed for at least one leg.")
-    markUnsafe('ws120', !flyableOut[10] || !flyableBack[10], !buildingOk[10] ? unsafeReasonBuilding : "Wind here is at or above this drone's horizontal speed for at least one leg.")
+    markUnsafe('timefore20', !flyableOut[0], cellReason(0, crosswindOkOut[0], unsafeReasonCrossOut))
+    markUnsafe('timeback20', !flyableBack[0], cellReason(0, crosswindOkBack[0], unsafeReasonCrossBack))
+    markUnsafe('timefore80', !flyableOut[6], cellReason(6, crosswindOkOut[6], unsafeReasonCrossOut))
+    markUnsafe('timeback80', !flyableBack[6], cellReason(6, crosswindOkBack[6], unsafeReasonCrossBack))
+    markUnsafe('timefore120', !flyableOut[10], cellReason(10, crosswindOkOut[10], unsafeReasonCrossOut))
+    markUnsafe('timeback120', !flyableBack[10], cellReason(10, crosswindOkBack[10], unsafeReasonCrossBack))
+    markUnsafe('ws20', !crosswindOkOut[0] || !crosswindOkBack[0], "The crosswind component here is at or above this drone's speed for at least one leg.")
+    markUnsafe('ws80', !crosswindOkOut[6] || !crosswindOkBack[6], "The crosswind component here is at or above this drone's speed for at least one leg.")
+    markUnsafe('ws120', !crosswindOkOut[10] || !crosswindOkBack[10], "The crosswind component here is at or above this drone's speed for at least one leg.")
+    markUnsafe('gust20', !windResOk[0], unsafeReasonGust)
+    markUnsafe('gust80', !windResOk[6], unsafeReasonGust)
+    markUnsafe('gust120', !windResOk[10], unsafeReasonGust)
 
     var buildingInfo = document.getElementById('buildingInfo')
     buildingInfo.classList.remove('warning-hint')
@@ -624,16 +659,23 @@ timehorb[i] = dist / (speedhorizontalback-ws[i]*angle)
         if (minSafeAltitude > 120){
             reasonBits.push("buildings along the route need about " + minSafeAltitude.toFixed(0) + " m of clearance, above the 120 m ceiling we check")
         }
-        var windBlocksOut = true, windBlocksBack = true
+        var gustBlocksAll = true
         for (i=0;i<heights.length; i++){
-            if (ws[i] < speedhorizontal) windBlocksOut = false
-            if (ws[i] < speedhorizontalback) windBlocksBack = false
+            if (windResOk[i]) gustBlocksAll = false
         }
-        if ((legs.indexOf('outbound')>-1 && windBlocksOut) || (legs.indexOf('return')>-1 && windBlocksBack)){
-            reasonBits.push("wind matches or beats the drone's speed at every height we can still check")
+        if (gustBlocksAll){
+            reasonBits.push("estimated gusts meet or beat this drone's " + windResistance.toFixed(1) + " m/s wind resistance at every height we can still check")
+        }
+        var crosswindBlocksOut = true, crosswindBlocksBack = true
+        for (i=0;i<heights.length; i++){
+            if (crosswindOkOut[i]) crosswindBlocksOut = false
+            if (crosswindOkBack[i]) crosswindBlocksBack = false
+        }
+        if ((legs.indexOf('outbound')>-1 && crosswindBlocksOut) || (legs.indexOf('return')>-1 && crosswindBlocksBack)){
+            reasonBits.push("the crosswind meets or beats the drone's speed at every height we can still check, so it couldn't hold course")
         }
         if (reasonBits.length===0){
-            reasonBits.push("no height between 20 and 120 m clears both the wind and the buildings on this route")
+            reasonBits.push("no height between 20 and 120 m clears the buildings, the gusts, and the crosswind on this route")
         }
 
         flyWarning.innerHTML = "We can't recommend a safe height for the " + legs.join(' and ') + " leg: " + reasonBits.join(' and ') + ". Consider a faster drone, a different time, or don't fly."
