@@ -409,6 +409,10 @@ details.panel + details.panel{
   cursor: help;
 }
 
+.warning-hint{
+  color: var(--danger);
+}
+
 .viz-row{
   display:flex;
   gap: 18px;
@@ -528,7 +532,8 @@ details.panel + details.panel{
         high-wind warning near the ground can still be flyable higher
         up.</li>
         <li>Fly above 30m where you can — it cuts noise disturbance
-        noticeably.</li>
+        noticeably. We'll also keep you at least 20m above any
+        building OpenStreetMap knows about near your route.</li>
         <li>Altitude choice matters most on long routes, with
         higher-drag drones, and when the wind runs roughly along your
         heading.</li>
@@ -659,6 +664,8 @@ details.panel + details.panel{
       </tbody>
     </table>
 
+    <p class="hint" id="buildingInfo" style="display:none"></p>
+
     <div class="meta-row">
       <span>Distance <span id="distance"></span> m</span>
       <span>Drone heading <span id="dronedir"></span>&deg;</span>
@@ -710,8 +717,6 @@ details.panel + details.panel{
     <div class="disclosure-body">
       <ul>
         <li>Model the gradual speed change caused by drift.</li>
-        <li>Ask for the tallest building nearby, multiply by 3m, and
-        require flying at least 20m above that.</li>
         <li>Add a rule of thumb for when flying above buildings beats
         flying between them (streets are rarely parallel to the wind).</li>
       </ul>
