@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>UAV altitude computer — optimal drone flight height</title>
+<title>Drone Optimal Route Planner</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <base target="_top">
 
@@ -12,6 +12,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" referrerpolicy="no-referrer">
 
 <style>
 
@@ -79,25 +80,27 @@ a:hover{ color: var(--accent); }
   flex-wrap: wrap;
 }
 
-.tail-badge{
-  display:inline-block;
-  font-family: var(--mono);
-  font-size: 12px;
-  letter-spacing: 0.03em;
-  color: var(--accent);
-  border: 1px solid var(--line);
-  background: var(--panel);
-  padding: 3px 8px;
-  border-radius: 4px;
-  margin-bottom: 10px;
-}
-
 h1{
   font-size: clamp(22px, 4vw, 30px);
   font-weight: 600;
   margin: 0;
   letter-spacing: -0.01em;
-  max-width: 20ch;
+  max-width: 22ch;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+h1 i{
+  color: var(--accent);
+  font-size: 0.85em;
+}
+
+.subtitle{
+  color: var(--muted);
+  font-size: 14px;
+  margin: 6px 0 0;
+  max-width: 40ch;
 }
 
 .status{
@@ -464,15 +467,15 @@ details.panel + details.panel{
 
   <header class="topbar">
     <div>
-      <span class="tail-badge">N1‑ALT</span>
-      <h1>Altitude computer for delivery drones</h1>
+      <h1><i class="fas fa-drone"></i> Drone Optimal Route Planner</h1>
+      <p class="subtitle">Find the safest and most efficient flight route and altitude for your drone</p>
     </div>
     <div class="status"><span class="status-dot"></span>wind data live</div>
   </header>
 
-  <p class="lede">Set a start and destination. We pull live wind at three
-  altitudes along the route and work out the height that gets your drone
-  there — and back — fastest.</p>
+  <p class="lede">Set a start and destination. We pull live wind at
+  different heights along the route and work out the altitude that
+  gets your drone there — and back — fastest.</p>
 
   <details class="panel">
     <summary>Why altitude matters</summary>
@@ -561,8 +564,7 @@ details.panel + details.panel{
     }
 
     function showPosition(position) {
-            moveToLocation(position.coords.latitude,  position.coords.longitude)
-            setstartloc(position.coords.latitude,  position.coords.longitude)
+            useCurrentLocationAsStart(position.coords.latitude, position.coords.longitude)
   }
   </script>
 
