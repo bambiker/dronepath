@@ -102,6 +102,50 @@ function drift(){
 // v(t) = 1 / (a*t+(1/v0))
 }
 
+// ---------------------------------------------------------------
+// Drone presets: horizontal/ascent/descent speed (m/s), from each
+// manufacturer's published spec sheet (sport/S-mode figures).
+// ---------------------------------------------------------------
+
+var DRONE_PRESETS = {
+  mavic3classic: { name: 'DJI Mavic 3 Classic', hor: 21, asc: 8, des: 6 },
+  mini4pro:      { name: 'DJI Mini 4 Pro',       hor: 16, asc: 5, des: 5 },
+  air3:          { name: 'DJI Air 3',            hor: 21, asc: 10, des: 10 },
+  matrice300:    { name: 'DJI Matrice 300 RTK',  hor: 23, asc: 6, des: 5 },
+  evolite:       { name: 'Autel EVO Lite+',      hor: 18, asc: 5, des: 4 }
+};
+
+function applyDronePreset(){
+  var sel = document.getElementById('droneModel');
+  var preset = DRONE_PRESETS[sel.value];
+  if (!preset) return; // "Custom" - leave whatever the user has typed
+  document.getElementById('hor').value = preset.hor;
+  document.getElementById('asc').value = preset.asc;
+  document.getElementById('des').value = preset.des;
+}
+
+// If the person hand-edits a speed field away from the selected
+// preset's value, flip the picker to "Custom" so it doesn't silently
+// keep claiming to be that drone.
+function checkCustom(){
+  var sel = document.getElementById('droneModel');
+  var preset = DRONE_PRESETS[sel.value];
+  if (!preset) return;
+  var hor = parseFloat(document.getElementById('hor').value);
+  var asc = parseFloat(document.getElementById('asc').value);
+  var des = parseFloat(document.getElementById('des').value);
+  if (hor !== preset.hor || asc !== preset.asc || des !== preset.des){
+    sel.value = 'custom';
+  }
+}
+
+function markUnsafe(id, unsafe, reason){
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('unsafe-value', unsafe);
+  el.title = unsafe ? reason : '';
+}
+
 async function getJSON() {
    const apiUrl = 'https://api.open-meteo.com/v1/forecast?latitude='+lat1+'&longitude='+lng1+'&hourly=wind_speed_10m,wind_speed_80m,wind_speed_120m,wind_speed_180m,wind_direction_10m,wind_direction_80m,wind_direction_120m,wind_direction_180m,visibility,precipitation_probability,precipitation&forecast_days=1';
 
@@ -120,7 +164,8 @@ var VIZ_COLORS = {
   ink: '#e7ecf6',
   muted: '#8d9ab8',
   line: '#324066',
-  panel: '#17223a'
+  panel: '#17223a',
+  danger: '#ff5a5a'
 };
 
 function polarToXY(cx, cy, r, deg){
@@ -153,20 +198,31 @@ function renderAltitudeTape(heights, minhorIndex, minhorbIndex){
 
   var track = '<line x1="' + trackX + '" y1="' + top + '" x2="' + trackX + '" y2="' + bottom + '" stroke="' + VIZ_COLORS.line + '" stroke-width="2"/>';
 
-  var yFore = yFor(heights[minhorIndex]);
-  var yBack = yFor(heights[minhorbIndex]);
+  var markers = '';
 
-  var markers =
-    '<g>' +
-      '<line x1="' + trackX + '" y1="' + yFore + '" x2="' + (trackX + 60) + '" y2="' + yFore + '" stroke="' + VIZ_COLORS.accent + '" stroke-width="2"/>' +
-      '<circle cx="' + trackX + '" cy="' + yFore + '" r="4" fill="' + VIZ_COLORS.accent + '"/>' +
-      '<text x="' + (trackX + 64) + '" y="' + (yFore + 4) + '" font-family="JetBrains Mono, monospace" font-size="11" fill="' + VIZ_COLORS.accent + '">' + heights[minhorIndex] + 'm out</text>' +
-    '</g>' +
-    '<g>' +
-      '<line x1="' + (trackX - 40) + '" y1="' + yBack + '" x2="' + trackX + '" y2="' + yBack + '" stroke="' + VIZ_COLORS.accent2 + '" stroke-width="2" stroke-dasharray="1 0"/>' +
-      '<circle cx="' + trackX + '" cy="' + yBack + '" r="4" fill="' + VIZ_COLORS.accent2 + '"/>' +
-      '<text x="4" y="' + (yBack + 4) + '" font-family="JetBrains Mono, monospace" font-size="11" fill="' + VIZ_COLORS.accent2 + '" text-anchor="start">' + heights[minhorbIndex] + 'm in</text>' +
-    '</g>';
+  if (minhorIndex !== -1){
+    var yFore = yFor(heights[minhorIndex]);
+    markers +=
+      '<g>' +
+        '<line x1="' + trackX + '" y1="' + yFore + '" x2="' + (trackX + 60) + '" y2="' + yFore + '" stroke="' + VIZ_COLORS.accent + '" stroke-width="2"/>' +
+        '<circle cx="' + trackX + '" cy="' + yFore + '" r="4" fill="' + VIZ_COLORS.accent + '"/>' +
+        '<text x="' + (trackX + 64) + '" y="' + (yFore + 4) + '" font-family="JetBrains Mono, monospace" font-size="11" fill="' + VIZ_COLORS.accent + '">' + heights[minhorIndex] + 'm out</text>' +
+      '</g>';
+  } else {
+    markers += '<text x="' + (trackX + 4) + '" y="' + (top + 4) + '" font-family="JetBrains Mono, monospace" font-size="10" fill="' + VIZ_COLORS.danger + '">no safe out height</text>';
+  }
+
+  if (minhorbIndex !== -1){
+    var yBack = yFor(heights[minhorbIndex]);
+    markers +=
+      '<g>' +
+        '<line x1="' + (trackX - 40) + '" y1="' + yBack + '" x2="' + trackX + '" y2="' + yBack + '" stroke="' + VIZ_COLORS.accent2 + '" stroke-width="2" stroke-dasharray="1 0"/>' +
+        '<circle cx="' + trackX + '" cy="' + yBack + '" r="4" fill="' + VIZ_COLORS.accent2 + '"/>' +
+        '<text x="4" y="' + (yBack + 4) + '" font-family="JetBrains Mono, monospace" font-size="11" fill="' + VIZ_COLORS.accent2 + '" text-anchor="start">' + heights[minhorbIndex] + 'm in</text>' +
+      '</g>';
+  } else {
+    markers += '<text x="' + (trackX + 4) + '" y="' + (top + 18) + '" font-family="JetBrains Mono, monospace" font-size="10" fill="' + VIZ_COLORS.danger + '">no safe return height</text>';
+  }
 
   var svg =
     '<svg viewBox="0 0 ' + w + ' ' + h + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Altitude tape showing the recommended outbound and return heights">' +
@@ -349,18 +405,31 @@ timehor[i] = dist /  (speedhorizontal+ws[i]*angle)
 timehorb[i] = dist / (speedhorizontalback-ws[i]*angle)
     }
 
-    minhor = 0
-    minhorb = 0
+    // A height isn't flyable for a leg if the wind speed there meets
+    // or exceeds the drone's horizontal speed for that leg (loaded
+    // outbound, or with the return payload) - the drone couldn't make
+    // reliable headway against it.
+    flyableOut = []
+    flyableBack = []
     for (i=0;i<heights.length; i++) {
-        if (timeupdown[i]+timehor[i]<timeupdown[minhor]+timehor[minhor])
+        flyableOut[i] = ws[i] < speedhorizontal
+        flyableBack[i] = ws[i] < speedhorizontalback
+    }
+
+    minhor = -1
+    minhorb = -1
+    for (i=0;i<heights.length; i++) {
+        if (flyableOut[i] && (minhor===-1 || timeupdown[i]+timehor[i]<timeupdown[minhor]+timehor[minhor]))
             minhor=i
-        if (timeupdownback[i]+timehorb[i]<timeupdownback[minhorb]+timehorb[minhorb])
+        if (flyableBack[i] && (minhorb===-1 || timeupdownback[i]+timehorb[i]<timeupdownback[minhorb]+timehorb[minhorb]))
             minhorb=i
     }
 
     tofixed=0
-    document.getElementById('heightfore').innerHTML = heights[minhor].toFixed(tofixed)
-    document.getElementById('heightback').innerHTML = heights[minhorb].toFixed(tofixed)
+    document.getElementById('heightfore').innerHTML = (minhor===-1) ? '&mdash;' : heights[minhor].toFixed(tofixed)
+    document.getElementById('heightback').innerHTML = (minhorb===-1) ? '&mdash;' : heights[minhorb].toFixed(tofixed)
+    document.getElementById('readoutFore').classList.toggle('unsafe', minhor===-1)
+    document.getElementById('readoutBack').classList.toggle('unsafe', minhorb===-1)
     document.getElementById('distance').innerHTML = dist.toFixed(tofixed)
     document.getElementById('dronedir').innerHTML = dronedegrees.toFixed(tofixed)
     // document.getElementById('windrose').innerHTML = wd[0].toFixed(tofixed)
@@ -378,12 +447,39 @@ timehorb[i] = dist / (speedhorizontalback-ws[i]*angle)
     document.getElementById('timefore120').innerHTML = (timeupdown[10]+timehor[10]).toFixed(tofixed)
     document.getElementById('timeback120').innerHTML = (timeupdownback[10]+timehorb[10]).toFixed(tofixed)
 
-    travel20=timeupdown[0]+timeupdownback[0]+timehor[0]+timehorb[0]
-    travelopt=timeupdown[minhor]+timehor[minhor]+timeupdownback[minhorb]+timehorb[minhorb]
+    var unsafeReasonOut = "Wind here is at or above this drone's outbound horizontal speed - not safe to fly this leg at this height.";
+    var unsafeReasonBack = "Wind here is at or above this drone's return horizontal speed - not safe to fly this leg at this height.";
+    markUnsafe('timefore20', !flyableOut[0], unsafeReasonOut)
+    markUnsafe('timeback20', !flyableBack[0], unsafeReasonBack)
+    markUnsafe('timefore80', !flyableOut[6], unsafeReasonOut)
+    markUnsafe('timeback80', !flyableBack[6], unsafeReasonBack)
+    markUnsafe('timefore120', !flyableOut[10], unsafeReasonOut)
+    markUnsafe('timeback120', !flyableBack[10], unsafeReasonBack)
+    markUnsafe('ws20', !flyableOut[0] || !flyableBack[0], "Wind here is at or above this drone's horizontal speed for at least one leg.")
+    markUnsafe('ws80', !flyableOut[6] || !flyableBack[6], "Wind here is at or above this drone's horizontal speed for at least one leg.")
+    markUnsafe('ws120', !flyableOut[10] || !flyableBack[10], "Wind here is at or above this drone's horizontal speed for at least one leg.")
 
-    document.getElementById('savesec').innerHTML = (travel20-travelopt).toFixed(2)
-    document.getElementById('totaltime20').innerHTML = travel20.toFixed(tofixed)
-    document.getElementById('savepercent').innerHTML = "(" +((travel20-travelopt)/travel20*100).toFixed(2) +"%)"
+    var flyWarning = document.getElementById('flyWarning')
+    var savingsText = document.getElementById('savingsText')
+
+    if (minhor!==-1 && minhorb!==-1){
+        flyWarning.style.display = 'none'
+        savingsText.style.display = ''
+
+        travel20=timeupdown[0]+timeupdownback[0]+timehor[0]+timehorb[0]
+        travelopt=timeupdown[minhor]+timehor[minhor]+timeupdownback[minhorb]+timehorb[minhorb]
+
+        document.getElementById('savesec').innerHTML = (travel20-travelopt).toFixed(2)
+        document.getElementById('totaltime20').innerHTML = travel20.toFixed(tofixed)
+        document.getElementById('savepercent').innerHTML = "(" +((travel20-travelopt)/travel20*100).toFixed(2) +"%)"
+    } else {
+        savingsText.style.display = 'none'
+        var legs = []
+        if (minhor===-1) legs.push('outbound')
+        if (minhorb===-1) legs.push('return')
+        flyWarning.innerHTML = "Wind is as strong as, or stronger than, this drone's horizontal speed at every altitude between 20 and 120 m on the " + legs.join(' and ') + " leg. We can't recommend a safe height here &mdash; consider a faster drone, a different time, or don't fly."
+        flyWarning.style.display = 'block'
+    }
 
     document.getElementById('visibility').innerHTML = (visibility/1000).toFixed(0)
     document.getElementById('precipitation').innerHTML = precipitation.toFixed(1)
