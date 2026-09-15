@@ -26,6 +26,7 @@
   --accent: #ff8a34;
   --accent-ink: #1a1002;
   --accent-2: #4fd1c5;
+  --danger: #ff5a5a;
   --radius: 6px;
   --sans: "Space Grotesk", system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
@@ -276,6 +277,26 @@ details.panel + details.panel{
   color: var(--muted);
 }
 
+.field-input select{
+  flex:1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  padding: 5px 0;
+}
+
+.field-input select:focus{
+  outline: none;
+}
+
+.field-input select option{
+  background: var(--panel-2);
+  color: var(--ink);
+}
+
 .field-note{
   color: var(--muted);
   font-size: 12px;
@@ -369,6 +390,24 @@ details.panel + details.panel{
 }
 
 .savings strong{ color: var(--ink); }
+
+.fly-warning{
+  background: rgba(255,90,90,0.12);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+.readout.unsafe .readout-value{ color: var(--danger); }
+
+.unsafe-value{
+  color: var(--danger);
+  border-bottom: 1px dotted var(--danger);
+  cursor: help;
+}
 
 .viz-row{
   display:flex;
@@ -514,16 +553,29 @@ details.panel + details.panel{
       <div class="panel-label">Drone configuration</div>
       <div class="field-grid">
         <label class="field">
+          Drone model
+          <div class="field-input">
+            <select id="droneModel" onchange="applyDronePreset()">
+              <option value="mavic3classic" selected>DJI Mavic 3 Classic</option>
+              <option value="mini4pro">DJI Mini 4 Pro</option>
+              <option value="air3">DJI Air 3</option>
+              <option value="matrice300">DJI Matrice 300 RTK</option>
+              <option value="evolite">Autel EVO Lite+</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+        </label>
+        <label class="field">
           Horizontal speed
-          <div class="field-input"><input type="text" id="hor" value="21"><span class="unit">m/s</span></div>
+          <div class="field-input"><input type="text" id="hor" value="21" oninput="checkCustom()"><span class="unit">m/s</span></div>
         </label>
         <label class="field">
           Ascent speed
-          <div class="field-input"><input type="text" id="asc" value="8"><span class="unit">m/s</span></div>
+          <div class="field-input"><input type="text" id="asc" value="8" oninput="checkCustom()"><span class="unit">m/s</span></div>
         </label>
         <label class="field">
           Descent speed
-          <div class="field-input"><input type="text" id="des" value="6"><span class="unit">m/s</span></div>
+          <div class="field-input"><input type="text" id="des" value="6" oninput="checkCustom()"><span class="unit">m/s</span></div>
         </label>
         <label class="field">
           Drag coefficient
@@ -538,9 +590,10 @@ details.panel + details.panel{
           <div class="field-input"><input type="text" id="payloadback" value="1"><span class="unit">&times;</span></div>
         </label>
       </div>
-      <p class="field-note">Speeds default to the DJI Mavic 3 Classic
-      spec sheet. A payload coefficient of 2 means you're carrying the
-      drone's own weight again, which halves that leg's speed.</p>
+      <p class="field-note">Pick your drone to load its speeds, or enter
+      your own — editing a value switches the picker to "Custom". A
+      payload coefficient of 2 means you're carrying the drone's own
+      weight again, which halves that leg's speed.</p>
     </section>
   </div>
 
@@ -571,18 +624,20 @@ details.panel + details.panel{
   <section class="panel results" id="result" style="display:none">
     <div class="panel-label">Result</div>
 
+    <div class="fly-warning" id="flyWarning" style="display:none"></div>
+
     <div class="result-headline">
-      <div class="readout">
+      <div class="readout" id="readoutFore">
         <span class="readout-label">Outbound height</span>
         <span class="readout-value"><span id="heightfore"></span><small>m</small></span>
       </div>
-      <div class="readout">
+      <div class="readout" id="readoutBack">
         <span class="readout-label">Return height</span>
         <span class="readout-value"><span id="heightback"></span><small>m</small></span>
       </div>
     </div>
 
-    <p class="savings">Flying the optimal heights saves
+    <p class="savings" id="savingsText">Flying the optimal heights saves
     <strong><span id="savesec"></span> seconds</strong>
     <span id="savepercent"></span> compared with holding 20m the whole
     way (<span id="totaltime20"></span>s total,
