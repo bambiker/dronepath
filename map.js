@@ -21,6 +21,19 @@ function moveToLocation(lat, lng){
   setstartloc(lat, lng)
 }
 
+// Used by the "Use my location" button: always puts the start marker
+// at the given location, moving it if it already exists instead of
+// leaving it in place or creating a duplicate.
+function useCurrentLocationAsStart(lat, lng){
+  map.setView([lat, lng], 14);
+  if (marker === 0){
+    setstartloc(lat, lng);
+  } else {
+    marker1.setLatLng([lat, lng]);
+    markerLocation(1, marker1);
+  }
+}
+
 function setstartloc(lat, long)
 {
     if(marker === 0){ // new marker
@@ -119,8 +132,8 @@ function renderAltitudeTape(heights, minhorIndex, minhorbIndex){
   var el = document.getElementById('altTape');
   if (!el) return;
 
-  var w = 220, h = 240;
-  var top = 20, bottom = h - 20;
+  var w = 220, h = 300;
+  var top = 20, bottom = h - 60;
   var minH = heights[0], maxH = heights[heights.length - 1];
   var trackX = 70;
 
@@ -164,12 +177,35 @@ function renderAltitudeTape(heights, minhorIndex, minhorbIndex){
   el.innerHTML = svg;
 }
 
+var WIND_COLORS = ['#7c9cff', '#4fd1c5', '#ffd166']; // 20m, 80m, 120m
+
+// Draws a line from the center out to `length`, with a small triangular
+// arrowhead at the tip pointing in the direction of travel, plus an
+// optional short text label placed just past the tip.
+function drawArrow(cx, cy, length, deg, color, width, label, labelOffset){
+  var tip = polarToXY(cx, cy, length, deg);
+  var back = polarToXY(cx, cy, length - 9, deg);
+  var leftDeg = deg - 8, rightDeg = deg + 8;
+  var headBase = length - 9;
+  var lp = polarToXY(cx, cy, headBase, leftDeg);
+  var rp = polarToXY(cx, cy, headBase, rightDeg);
+
+  var svg = '<line x1="' + cx + '" y1="' + cy + '" x2="' + back.x + '" y2="' + back.y + '" stroke="' + color + '" stroke-width="' + width + '" stroke-linecap="round"/>' +
+    '<polygon points="' + tip.x + ',' + tip.y + ' ' + lp.x + ',' + lp.y + ' ' + rp.x + ',' + rp.y + '" fill="' + color + '"/>';
+
+  if (label){
+    var lpt = polarToXY(cx, cy, length + (labelOffset || 14), deg);
+    svg += '<text x="' + lpt.x + '" y="' + (lpt.y + 3) + '" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="' + color + '">' + label + '</text>';
+  }
+  return svg;
+}
+
 function renderCompassRose(droneDeg, windPoints){
   var el = document.getElementById('compassRose');
   if (!el) return;
 
-  var w = 220, h = 240;
-  var cx = w / 2, cy = 128, r = 78;
+  var w = 220, h = 300;
+  var cx = w / 2, cy = 120, r = 76;
 
   var ring = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + VIZ_COLORS.line + '" stroke-width="1.5"/>' +
              '<circle cx="' + cx + '" cy="' + cy + '" r="2" fill="' + VIZ_COLORS.line + '"/>';
@@ -180,34 +216,48 @@ function renderCompassRose(droneDeg, windPoints){
   for (var i = 0; i < labels.length; i++){
     var p1 = polarToXY(cx, cy, r, labels[i]);
     var p2 = polarToXY(cx, cy, r - 8, labels[i]);
-    var pt = polarToXY(cx, cy, r + 14, labels[i]);
+    var pt = polarToXY(cx, cy, r + 15, labels[i]);
     ticks += '<line x1="' + p1.x + '" y1="' + p1.y + '" x2="' + p2.x + '" y2="' + p2.y + '" stroke="' + VIZ_COLORS.muted + '" stroke-width="1.5"/>';
     ticks += '<text x="' + pt.x + '" y="' + (pt.y + 3) + '" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="' + VIZ_COLORS.muted + '">' + labelText[i] + '</text>';
   }
 
-  var droneTip = polarToXY(cx, cy, r - 6, droneDeg);
-  var droneArrow = '<line x1="' + cx + '" y1="' + cy + '" x2="' + droneTip.x + '" y2="' + droneTip.y + '" stroke="' + VIZ_COLORS.ink + '" stroke-width="2.5"/>' +
-                    '<circle cx="' + droneTip.x + '" cy="' + droneTip.y + '" r="4" fill="' + VIZ_COLORS.ink + '"/>';
-
-  var windDots = '';
-  var windShades = [VIZ_COLORS.accent2, VIZ_COLORS.accent, VIZ_COLORS.line];
+  // Wind arrows first (shorter, so the drone heading arrow sits on top
+  // and always stays readable even if directions overlap).
+  var windArrows = '';
+  var radii = [r * 0.45, r * 0.62, r * 0.8];
   for (var j = 0; j < windPoints.length; j++){
-    var wp = polarToXY(cx, cy, r, windPoints[j].wd);
-    windDots += '<circle cx="' + wp.x + '" cy="' + wp.y + '" r="5" fill="' + windShades[j % windShades.length] + '" stroke="' + VIZ_COLORS.panel + '" stroke-width="1"/>';
+    var color = WIND_COLORS[j % WIND_COLORS.length];
+    windArrows += drawArrow(cx, cy, radii[j], windPoints[j].wd, color, 2, null, 0);
   }
 
-  var legend =
-    '<g font-family="JetBrains Mono, monospace" font-size="10">' +
-      '<circle cx="14" cy="' + (h - 42) + '" r="4" fill="' + VIZ_COLORS.ink + '"/>' +
-      '<text x="24" y="' + (h - 38) + '" fill="' + VIZ_COLORS.muted + '">drone heading</text>' +
-      '<circle cx="14" cy="' + (h - 26) + '" r="4" fill="' + VIZ_COLORS.accent2 + '"/>' +
-      '<text x="24" y="' + (h - 22) + '" fill="' + VIZ_COLORS.muted + '">wind @ 20/80/120m</text>' +
-    '</g>';
+  var droneArrow = drawArrow(cx, cy, r - 4, droneDeg, VIZ_COLORS.ink, 2.5, null, 0);
+
+  // Legend: one row per series with its actual heading, since color
+  // alone on an overlapping compass is hard to read at a glance.
+  var legendRows = [
+    { color: VIZ_COLORS.ink, text: 'drone heading ' + droneDeg.toFixed(0) + '\u00B0' }
+  ];
+  var windLabels = ['wind 20m ', 'wind 80m ', 'wind 120m '];
+  for (var k = 0; k < windPoints.length; k++){
+    legendRows.push({
+      color: WIND_COLORS[k % WIND_COLORS.length],
+      text: windLabels[k] + windPoints[k].wd.toFixed(0) + '\u00B0'
+    });
+  }
+
+  var legendTop = h - (legendRows.length * 18) - 6;
+  var legend = '<g font-family="JetBrains Mono, monospace" font-size="11">';
+  for (var m = 0; m < legendRows.length; m++){
+    var ly = legendTop + m * 18;
+    legend += '<line x1="6" y1="' + ly + '" x2="20" y2="' + ly + '" stroke="' + legendRows[m].color + '" stroke-width="3" stroke-linecap="round"/>';
+    legend += '<text x="26" y="' + (ly + 4) + '" fill="' + VIZ_COLORS.muted + '">' + legendRows[m].text + '</text>';
+  }
+  legend += '</g>';
 
   var svg =
-    '<svg viewBox="0 0 ' + w + ' ' + h + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Compass showing drone heading and wind direction at three altitudes">' +
+    '<svg viewBox="0 0 ' + w + ' ' + h + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Compass showing drone heading and wind direction at 20, 80 and 120 meters">' +
       '<text x="' + cx + '" y="14" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="' + VIZ_COLORS.muted + '">HEADING</text>' +
-      ring + ticks + windDots + droneArrow + legend +
+      ring + ticks + windArrows + droneArrow + legend +
     '</svg>';
 
   el.innerHTML = svg;
