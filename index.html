@@ -583,6 +583,10 @@ details.panel + details.panel{
           <div class="field-input"><input type="text" id="des" value="6" oninput="checkCustom()"><span class="unit">m/s</span></div>
         </label>
         <label class="field">
+          Wind resistance
+          <div class="field-input"><input type="text" id="windres" value="12" oninput="checkCustom()"><span class="unit">m/s</span></div>
+        </label>
+        <label class="field">
           Drag coefficient
           <div class="field-input"><input type="text" id="drag" value="1.0"><span class="unit">&nbsp;</span></div>
         </label>
@@ -595,10 +599,11 @@ details.panel + details.panel{
           <div class="field-input"><input type="text" id="payloadback" value="1"><span class="unit">&times;</span></div>
         </label>
       </div>
-      <p class="field-note">Pick your drone to load its speeds, or enter
-      your own — editing a value switches the picker to "Custom". A
-      payload coefficient of 2 means you're carrying the drone's own
-      weight again, which halves that leg's speed.</p>
+      <p class="field-note">Pick your drone to load its speeds and
+      wind resistance rating, or enter your own — editing a value
+      switches the picker to "Custom". A payload coefficient of 2
+      means you're carrying the drone's own weight again, which
+      halves that leg's speed.</p>
     </section>
   </div>
 
@@ -655,12 +660,12 @@ details.panel + details.panel{
 
     <table class="wind-table">
       <thead>
-        <tr><th>Altitude</th><th>Wind</th><th>Heading</th><th>Outbound</th><th>Return</th></tr>
+        <tr><th>Altitude</th><th>Wind</th><th>Gust (est.)</th><th>Heading</th><th>Outbound</th><th>Return</th></tr>
       </thead>
       <tbody>
-        <tr><td>20 m</td><td><span id="ws20"></span> m/s</td><td><span id="wd20"></span>&deg;</td><td><span id="timefore20"></span> s</td><td><span id="timeback20"></span> s</td></tr>
-        <tr><td>80 m</td><td><span id="ws80"></span> m/s</td><td><span id="wd80"></span>&deg;</td><td><span id="timefore80"></span> s</td><td><span id="timeback80"></span> s</td></tr>
-        <tr><td>120 m</td><td><span id="ws120"></span> m/s</td><td><span id="wd120"></span>&deg;</td><td><span id="timefore120"></span> s</td><td><span id="timeback120"></span> s</td></tr>
+        <tr><td>20 m</td><td><span id="ws20"></span> m/s</td><td><span id="gust20"></span> m/s</td><td><span id="wd20"></span>&deg;</td><td><span id="timefore20"></span> s</td><td><span id="timeback20"></span> s</td></tr>
+        <tr><td>80 m</td><td><span id="ws80"></span> m/s</td><td><span id="gust80"></span> m/s</td><td><span id="wd80"></span>&deg;</td><td><span id="timefore80"></span> s</td><td><span id="timeback80"></span> s</td></tr>
+        <tr><td>120 m</td><td><span id="ws120"></span> m/s</td><td><span id="gust120"></span> m/s</td><td><span id="wd120"></span>&deg;</td><td><span id="timefore120"></span> s</td><td><span id="timeback120"></span> s</td></tr>
       </tbody>
     </table>
 
