@@ -277,6 +277,31 @@ var VIZ_COLORS = {
   danger: '#ff5a5a'
 };
 
+// Keeps the SVG diagrams in step with the page's light/dark theme,
+// which otherwise follows the OS/browser preference via CSS alone.
+function refreshVizTheme(){
+  var light = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+  if (light){
+    VIZ_COLORS.accent = '#d9670f';
+    VIZ_COLORS.accent2 = '#0e8c7f';
+    VIZ_COLORS.ink = '#172037';
+    VIZ_COLORS.muted = '#58658a';
+    VIZ_COLORS.line = '#c7cfe0';
+    VIZ_COLORS.panel = '#eef1f8';
+    VIZ_COLORS.danger = '#c93030';
+    WIND_COLORS = ['#3355cc', '#0e8c7f', '#b8790a'];
+  } else {
+    VIZ_COLORS.accent = '#ff8a34';
+    VIZ_COLORS.accent2 = '#4fd1c5';
+    VIZ_COLORS.ink = '#e7ecf6';
+    VIZ_COLORS.muted = '#8d9ab8';
+    VIZ_COLORS.line = '#324066';
+    VIZ_COLORS.panel = '#17223a';
+    VIZ_COLORS.danger = '#ff5a5a';
+    WIND_COLORS = ['#7c9cff', '#4fd1c5', '#ffd166'];
+  }
+}
+
 function polarToXY(cx, cy, r, deg){
   var rad = (deg) * Math.PI / 180;
   return { x: cx + r * Math.sin(rad), y: cy - r * Math.cos(rad) };
@@ -285,6 +310,7 @@ function polarToXY(cx, cy, r, deg){
 function renderAltitudeTape(heights, minhorIndex, minhorbIndex){
   var el = document.getElementById('altTape');
   if (!el) return;
+  refreshVizTheme();
 
   var w = 220, h = 300;
   var top = 20, bottom = h - 60;
@@ -368,6 +394,7 @@ function drawArrow(cx, cy, length, deg, color, width, label, labelOffset){
 function renderCompassRose(droneDeg, windPoints){
   var el = document.getElementById('compassRose');
   if (!el) return;
+  refreshVizTheme();
 
   var w = 220, h = 300;
   var cx = w / 2, cy = 120, r = 76;
