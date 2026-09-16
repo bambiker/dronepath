@@ -165,6 +165,15 @@ var BUILDING_TYPE_HEIGHT_M = {
   apartments: 12, commercial: 10, industrial: 10, retail: 8, office: 12, warehouse: 9
 };
 
+// Places that are risky to overfly: schools, kindergartens, hospitals
+// and playgrounds. We only know their tags + a center point (no
+// footprint, to keep the download small), so each is treated as a
+// circle whose radius is a rough guess by type.
+var HAZARD_CORRIDOR_HALF_WIDTH_M = 220; // wide enough to see nearby hazards and have room to route around them
+var HAZARD_SAFETY_MARGIN_M = 20;        // extra buffer added on top of the estimated radius
+var HAZARD_TYPE_RADIUS_M = { school: 60, kindergarten: 40, hospital: 90, playground: 30 };
+var HAZARD_TYPE_LABEL = { school: 'School', kindergarten: 'Kindergarten', hospital: 'Hospital', playground: 'Playground' };
+
 function rad2deg(rad){
   return rad * (180 / Math.PI);
 }
@@ -228,13 +237,43 @@ function estimateBuildingHeight(tags){
   return BUILDING_HEIGHT_FALLBACK_M;
 }
 
-// Fetches buildings in a narrow corridor around the route and returns
-// { count, maxHeight } in meters, or throws on a network/API failure
-// (the caller decides how to degrade).
-async function getBuildingsNearRoute(lat1, lng1, lat2, lng2, bearingDeg){
-  var polygon = routeCorridorPolygon(lat1, lng1, lat2, lng2, bearingDeg, BUILDING_CORRIDOR_HALF_WIDTH_M);
-  var polyStr = polygon.map(function(p){ return p.lat + ' ' + p.lng; }).join(' ');
-  var query = '[out:json][timeout:25];way["building"](poly:"' + polyStr + '");out tags center;';
+function classifyHazard(tags){
+  tags = tags || {};
+  if (tags.amenity === 'school') return 'school';
+  if (tags.amenity === 'kindergarten') return 'kindergarten';
+  if (tags.amenity === 'hospital') return 'hospital';
+  if (tags.leisure === 'playground') return 'playground';
+  return null;
+}
+
+// Overpass gives nodes their own lat/lon directly, and ways/relations
+// a bounding-box "center" when queried with "out ... center;".
+function elementLatLng(el){
+  if (typeof el.lat === 'number' && typeof el.lon === 'number') return { lat: el.lat, lng: el.lon };
+  if (el.center) return { lat: el.center.lat, lng: el.center.lon };
+  return null;
+}
+
+function polygonToStr(polygon){
+  return polygon.map(function(p){ return p.lat + ' ' + p.lng; }).join(' ');
+}
+
+// One Overpass call for both building heights and hazard zones, each
+// with its own (differently sized) corridor, tags + center only - no
+// full geometries - so the download stays small and quick even when
+// the route is long.
+async function getOsmDataNearRoute(lat1, lng1, lat2, lng2, bearingDeg){
+  var buildingPoly = polygonToStr(routeCorridorPolygon(lat1, lng1, lat2, lng2, bearingDeg, BUILDING_CORRIDOR_HALF_WIDTH_M));
+  var hazardPoly = polygonToStr(routeCorridorPolygon(lat1, lng1, lat2, lng2, bearingDeg, HAZARD_CORRIDOR_HALF_WIDTH_M));
+
+  var query = '[out:json][timeout:25];(' +
+    'way["building"](poly:"' + buildingPoly + '");' +
+    'node["amenity"~"^(school|kindergarten|hospital)$"](poly:"' + hazardPoly + '");' +
+    'way["amenity"~"^(school|kindergarten|hospital)$"](poly:"' + hazardPoly + '");' +
+    'relation["amenity"~"^(school|kindergarten|hospital)$"](poly:"' + hazardPoly + '");' +
+    'node["leisure"="playground"](poly:"' + hazardPoly + '");' +
+    'way["leisure"="playground"](poly:"' + hazardPoly + '");' +
+    ');out tags center;';
 
   var response = await fetch('https://overpass-api.de/api/interpreter', {
     method: 'POST',
@@ -246,12 +285,99 @@ async function getBuildingsNearRoute(lat1, lng1, lat2, lng2, bearingDeg){
   }
   var data = await response.json();
   var elements = data.elements || [];
+
+  var buildingCount = 0;
   var maxHeight = 0;
+  var hazards = [];
+
   for (var i = 0; i < elements.length; i++){
-    var h = estimateBuildingHeight(elements[i].tags);
-    if (h > maxHeight) maxHeight = h;
+    var tags = elements[i].tags || {};
+    if (tags.building){
+      buildingCount++;
+      var h = estimateBuildingHeight(tags);
+      if (h > maxHeight) maxHeight = h;
+    }
+    var hazardType = classifyHazard(tags);
+    if (hazardType){
+      var pos = elementLatLng(elements[i]);
+      if (pos){
+        hazards.push({ lat: pos.lat, lng: pos.lng, type: hazardType, name: tags.name || null, radius: HAZARD_TYPE_RADIUS_M[hazardType] });
+      }
+    }
   }
-  return { count: elements.length, maxHeight: maxHeight };
+
+  return {
+    buildings: { count: buildingCount, maxHeight: maxHeight },
+    hazards: hazards
+  };
+}
+
+// Straight line by default. If that line passes within a hazard's
+// (radius + safety margin) of its center, we insert one waypoint per
+// blocking hazard, offset just far enough to clear it on whichever
+// side needs the smaller detour. Good enough for the isolated,
+// one-or-two-obstacle case this app is meant for - not a full path
+// planner, so it's worth a glance on the map before flying.
+function computeAvoidanceRoute(lat1, lng1, lat2, lng2, hazards){
+  var straightDist = getDistanceFromLatLon(lat1, lng1, lat2, lng2);
+  var straightPath = [{ lat: lat1, lng: lng1 }, { lat: lat2, lng: lng2 }];
+
+  if (straightDist < 10 || !hazards || hazards.length === 0){
+    return { path: straightPath, distance: straightDist, blockingCount: 0 };
+  }
+
+  // Local flat-earth projection centered on the start point - fine
+  // for the short distances this app targets.
+  var mPerDegLat = 110540;
+  var mPerDegLng = 111320 * Math.cos(deg2rad(lat1));
+
+  function toLocal(lat, lng){
+    return { x: (lng - lng1) * mPerDegLng, y: (lat - lat1) * mPerDegLat };
+  }
+  function toLatLng(p){
+    return { lat: lat1 + p.y / mPerDegLat, lng: lng1 + p.x / mPerDegLng };
+  }
+
+  var dest = toLocal(lat2, lng2);
+  var routeLen = Math.sqrt(dest.x * dest.x + dest.y * dest.y);
+  var ux = dest.x / routeLen, uy = dest.y / routeLen;
+  var px = -uy, py = ux;
+
+  var blocking = [];
+  for (var i = 0; i < hazards.length; i++){
+    var hz = hazards[i];
+    var hp = toLocal(hz.lat, hz.lng);
+    var t = hp.x * ux + hp.y * uy;
+    var d = hp.x * px + hp.y * py;
+    var clearance = hz.radius + HAZARD_SAFETY_MARGIN_M;
+    if (t >= 0 && t <= routeLen && Math.abs(d) < clearance){
+      blocking.push({ t: t, d: d, clearance: clearance });
+    }
+  }
+
+  if (blocking.length === 0){
+    return { path: straightPath, distance: straightDist, blockingCount: 0 };
+  }
+
+  blocking.sort(function(a, b){ return a.t - b.t; });
+
+  var pathLocal = [{ x: 0, y: 0 }];
+  for (var j = 0; j < blocking.length; j++){
+    var b = blocking[j];
+    var posA = b.d + b.clearance;
+    var posB = b.d - b.clearance;
+    var pos = (Math.abs(posA) <= Math.abs(posB)) ? posA : posB;
+    pathLocal.push({ x: ux * b.t + px * pos, y: uy * b.t + py * pos });
+  }
+  pathLocal.push(dest);
+
+  var path = pathLocal.map(toLatLng);
+  var totalDist = 0;
+  for (var k = 1; k < path.length; k++){
+    totalDist += getDistanceFromLatLon(path[k - 1].lat, path[k - 1].lng, path[k].lat, path[k].lng);
+  }
+
+  return { path: path, distance: totalDist, blockingCount: blocking.length };
 }
 
 async function getJSON() {
@@ -477,15 +603,21 @@ async function calcHeight() {
     dist=getDistanceFromLatLon(startlat,startlng,destlat, destlng);
 
     // Kick both network calls off together - wind from open-meteo, and
-    // nearby building heights from OpenStreetMap's Overpass API. A
-    // failed building lookup shouldn't block the wind calculation, so
-    // it's caught locally and treated as "no data".
+    // nearby buildings + hazard zones from OpenStreetMap's Overpass
+    // API. A failed OSM lookup shouldn't block the wind calculation,
+    // so it's caught locally and treated as "no data".
     const windPromise = this.getJSON();
-    const buildingsPromise = getBuildingsNearRoute(startlat, startlng, destlat, destlng, dronedegrees)
-        .catch(function(err){ console.warn('Building lookup failed:', err); return null; });
+    const osmPromise = getOsmDataNearRoute(startlat, startlng, destlat, destlng, dronedegrees)
+        .catch(function(err){ console.warn('OSM lookup failed:', err); return null; });
 
     const json = await windPromise;  // command waits until completion
-    const buildings = await buildingsPromise;
+    const osmData = await osmPromise;
+    const buildings = osmData ? osmData.buildings : null;
+    const hazards = osmData ? osmData.hazards : [];
+
+    const avoidance = computeAvoidanceRoute(startlat, startlng, destlat, destlng, hazards);
+    const routeDist = avoidance.distance;
+    renderHazardsAndRoute(hazards, avoidance.path);
 
     const d = new Date();
     let hour = d.getUTCHours();
@@ -558,8 +690,8 @@ timeupdown[i] = (heights[i]/speedup)+(heights[i]/speeddown)
 timeupdownback[i] = (heights[i]/speedupback)+(heights[i]/speeddownback)
 diffangle=(wd[i]-dronedegrees)/180*Math.PI
 angle = Math.cos(diffangle)*drag
-timehor[i] = dist /  (speedhorizontal+ws[i]*angle)
-timehorb[i] = dist / (speedhorizontalback-ws[i]*angle)
+timehor[i] = routeDist /  (speedhorizontal+ws[i]*angle)
+timehorb[i] = routeDist / (speedhorizontalback-ws[i]*angle)
 // Gust extrapolated from the 10m gust/average ratio, and the
 // crosswind component (perpendicular to heading) of the average
 // wind - used below as separate flyability checks.
@@ -608,10 +740,17 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
     document.getElementById('heightback').innerHTML = (minhorb===-1) ? '&mdash;' : heights[minhorb].toFixed(tofixed)
     document.getElementById('readoutFore').classList.toggle('unsafe', minhor===-1)
     document.getElementById('readoutBack').classList.toggle('unsafe', minhorb===-1)
-    document.getElementById('distance').innerHTML = dist.toFixed(tofixed)
+    document.getElementById('distance').innerHTML = routeDist.toFixed(tofixed)
+    var detourNote = document.getElementById('detourNote')
+    var detourExtra = routeDist - dist
+    if (avoidance.blockingCount > 0 && detourExtra > 1){
+        detourNote.textContent = ' (+' + detourExtra.toFixed(0) + 'm detour around ' + avoidance.blockingCount + ' restricted area' + (avoidance.blockingCount===1?'':'s') + ')'
+    } else {
+        detourNote.textContent = ''
+    }
     document.getElementById('dronedir').innerHTML = dronedegrees.toFixed(tofixed)
     // document.getElementById('windrose').innerHTML = wd[0].toFixed(tofixed)
-    document.getElementById('timenowind').innerHTML = (timeupdown[0]+timeupdownback[0]+(dist / speedhorizontal)+(dist / speedhorizontalback)).toFixed(tofixed)
+    document.getElementById('timenowind').innerHTML = (timeupdown[0]+timeupdownback[0]+(routeDist / speedhorizontal)+(routeDist / speedhorizontalback)).toFixed(tofixed)
     document.getElementById('ws20').innerHTML = (ws[0]).toFixed(1)
     document.getElementById('ws80').innerHTML = (ws[6]).toFixed(1)
     document.getElementById('ws120').innerHTML = (ws[10]).toFixed(1)
@@ -662,6 +801,21 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
         buildingInfo.innerHTML = "Checked " + buildings.count + " building" + (buildings.count===1?'':'s') + " from OpenStreetMap near this route &mdash; the tallest is about " + maxBuildingHeight.toFixed(0) + " m, so we won't recommend flying below " + minSafeAltitude.toFixed(0) + " m."
     }
     buildingInfo.style.display = 'block'
+
+    var hazardInfo = document.getElementById('hazardInfo')
+    hazardInfo.classList.remove('warning-hint')
+    if (osmData === null){
+        hazardInfo.innerHTML = "Couldn't load restricted-area data from OpenStreetMap, so schools, kindergartens, hospitals and playgrounds along this route aren't being checked right now."
+        hazardInfo.classList.add('warning-hint')
+    } else if (hazards.length === 0){
+        hazardInfo.innerHTML = "No schools, kindergartens, hospitals or playgrounds found near this route in OpenStreetMap."
+    } else {
+        var detourText = avoidance.blockingCount > 0
+            ? "The route on the map now detours around " + avoidance.blockingCount + " of them."
+            : "The straight-line route already clears all of them."
+        hazardInfo.innerHTML = "Found " + hazards.length + " restricted area" + (hazards.length===1?'':'s') + " (schools, kindergartens, hospitals, playgrounds) near this route, marked in red on the map. " + detourText
+    }
+    hazardInfo.style.display = 'block'
 
     var flyWarning = document.getElementById('flyWarning')
     var savingsText = document.getElementById('savingsText')
@@ -738,6 +892,29 @@ subdomains:['mt0','mt1','mt2','mt3']
 }).addTo(map);
 
 map.attributionControl.setPrefix('Google map image') //remove flag
+
+// Hazard zones (schools/kindergartens/hospitals/playgrounds) and the
+// route around them. Cleared and redrawn on every calculation instead
+// of piling up new layers each time.
+var hazardLayer = L.layerGroup().addTo(map);
+var routeLine = L.polyline([], { color: '#2f6fed', weight: 4, opacity: 0.85 }).addTo(map);
+
+function renderHazardsAndRoute(hazards, path){
+  hazardLayer.clearLayers();
+  for (var i = 0; i < hazards.length; i++){
+    var hz = hazards[i];
+    var label = HAZARD_TYPE_LABEL[hz.type] || 'Restricted area';
+    if (hz.name) label += ' \u2014 ' + hz.name;
+    L.circle([hz.lat, hz.lng], {
+      radius: hz.radius,
+      color: '#e6484f',
+      weight: 2,
+      fillColor: '#e6484f',
+      fillOpacity: 0.22
+    }).bindTooltip(label).addTo(hazardLayer);
+  }
+  routeLine.setLatLngs(path.map(function(p){ return [p.lat, p.lng]; }));
+}
 
 map.on('click', addMarker);
 
