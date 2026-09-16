@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Drone Optimal Route Planner</title>
+<title>Flytimizer - Drone Optimal Route Optimizer</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <base target="_top">
 <link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
@@ -110,11 +110,10 @@ a:hover{ color: var(--accent); }
 }
 
 h1{
-  font-size: clamp(22px, 4vw, 30px);
+  font-size: clamp(20px, 4vw, 28px);
   font-weight: 600;
   margin: 0;
   letter-spacing: -0.01em;
-  max-width: 22ch;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -129,35 +128,6 @@ h1 i{
   color: var(--muted);
   font-size: 14px;
   margin: 6px 0 0;
-  max-width: 40ch;
-}
-
-.status{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.status-dot{
-  width:8px; height:8px;
-  border-radius:50%;
-  background: var(--accent-2);
-  box-shadow: 0 0 8px var(--accent-2);
-}
-
-.status-dot.status-loading{
-  background: var(--accent);
-  box-shadow: 0 0 8px var(--accent);
-  animation: statusPulse 1s ease-in-out infinite;
-}
-
-@keyframes statusPulse{
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.25; }
 }
 
 .lede{
@@ -236,18 +206,7 @@ details.panel + details.panel{
   margin-top: -4px;
 }
 
-/* ---------- console: map + config ---------- */
-
-.console{
-  display:grid;
-  grid-template-columns: 1.3fr 1fr;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-@media (max-width: 720px){
-  .console{ grid-template-columns: 1fr; }
-}
+/* ---------- map ---------- */
 
 #map{
   width: 100%;
@@ -549,10 +508,9 @@ details.panel + details.panel{
 
   <header class="topbar">
     <div>
-      <h1><i class="fas fa-drone"></i> Drone Optimal Route Planner</h1>
+      <h1><i class="fas fa-drone"></i> Flytimizer - Drone Optimal Route Optimizer</h1>
       <p class="subtitle">Find the safest and most efficient flight route and altitude for your drone</p>
     </div>
-    <div class="status"><span class="status-dot" id="statusDot"></span><span id="statusText">wind data live</span></div>
   </header>
 
   <p class="lede">Set a start and destination. We pull live wind at
@@ -585,20 +543,19 @@ details.panel + details.panel{
     </div>
   </details>
 
-  <div class="console">
-    <section class="panel map-panel">
-      <div class="panel-label">Route</div>
-      <div id="map"></div>
-      <div class="map-actions">
-        <button class="btn btn-ghost" onclick="getLocation()">Use my location</button>
-        <p class="hint">Click the map to drop a start point, click again
-        for the destination. Drag either pin to adjust it. After you
-        calculate, red circles mark schools, kindergartens, hospitals
-        and playgrounds nearby, and the blue line shows the route.</p>
-      </div>
-    </section>
+  <section class="panel map-panel">
+    <div class="panel-label">Route</div>
+    <div id="map"></div>
+    <div class="map-actions">
+      <button class="btn btn-ghost" onclick="getLocation()">Use my location</button>
+      <p class="hint">Click the map to drop a start point, click again
+      for the destination. Drag either pin to adjust it. After you
+      calculate, red circles mark schools, kindergartens, hospitals
+      and playgrounds nearby, and the blue line shows the route.</p>
+    </div>
+  </section>
 
-    <details class="panel config-panel" id="droneConfigPanel">
+  <details class="panel" id="droneConfigPanel">
       <summary>Drone: <span id="droneSummaryName">DJI Mavic 3 Classic</span></summary>
       <div class="disclosure-body">
       <div class="field-grid">
@@ -651,7 +608,6 @@ details.panel + details.panel{
       halves that leg's speed.</p>
       </div>
     </details>
-  </div>
 
   <button class="btn btn-primary" id="calcBtn" onclick="getHeight()">Calculate optimal altitude</button>
 
@@ -667,14 +623,10 @@ details.panel + details.panel{
 
      async function getHeight() {
       var btn = document.getElementById('calcBtn');
-      var statusText = document.getElementById('statusText');
-      var statusDot = document.getElementById('statusDot');
       var originalLabel = btn.textContent;
 
       btn.disabled = true;
       btn.textContent = 'Downloading wind, buildings & restricted areas\u2026';
-      statusText.textContent = 'downloading map data\u2026';
-      statusDot.classList.add('status-loading');
 
       try {
         await calcHeight();
@@ -687,8 +639,6 @@ details.panel + details.panel{
       } finally {
         btn.disabled = false;
         btn.textContent = originalLabel;
-        statusText.textContent = 'wind data live';
-        statusDot.classList.remove('status-loading');
       }
     }
 
