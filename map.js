@@ -115,14 +115,24 @@ var DRONE_PRESETS = {
   evolite:       { name: 'Autel EVO Lite+',      hor: 18, asc: 5, des: 4, windres: 10.6 }
 };
 
+function updateDroneSummary(){
+  var sel = document.getElementById('droneModel');
+  var nameEl = document.getElementById('droneSummaryName');
+  if (!sel || !nameEl) return;
+  var preset = DRONE_PRESETS[sel.value];
+  nameEl.textContent = preset ? preset.name : 'Custom';
+}
+
 function applyDronePreset(){
   var sel = document.getElementById('droneModel');
   var preset = DRONE_PRESETS[sel.value];
-  if (!preset) return; // "Custom" - leave whatever the user has typed
-  document.getElementById('hor').value = preset.hor;
-  document.getElementById('asc').value = preset.asc;
-  document.getElementById('des').value = preset.des;
-  document.getElementById('windres').value = preset.windres;
+  if (preset){
+    document.getElementById('hor').value = preset.hor;
+    document.getElementById('asc').value = preset.asc;
+    document.getElementById('des').value = preset.des;
+    document.getElementById('windres').value = preset.windres;
+  }
+  updateDroneSummary(); // "Custom" - leave whatever the user has typed, just relabel
 }
 
 // If the person hand-edits a speed field away from the selected
@@ -131,14 +141,16 @@ function applyDronePreset(){
 function checkCustom(){
   var sel = document.getElementById('droneModel');
   var preset = DRONE_PRESETS[sel.value];
-  if (!preset) return;
-  var hor = parseFloat(document.getElementById('hor').value);
-  var asc = parseFloat(document.getElementById('asc').value);
-  var des = parseFloat(document.getElementById('des').value);
-  var windres = parseFloat(document.getElementById('windres').value);
-  if (hor !== preset.hor || asc !== preset.asc || des !== preset.des || windres !== preset.windres){
-    sel.value = 'custom';
+  if (preset){
+    var hor = parseFloat(document.getElementById('hor').value);
+    var asc = parseFloat(document.getElementById('asc').value);
+    var des = parseFloat(document.getElementById('des').value);
+    var windres = parseFloat(document.getElementById('windres').value);
+    if (hor !== preset.hor || asc !== preset.asc || des !== preset.des || windres !== preset.windres){
+      sel.value = 'custom';
+    }
   }
+  updateDroneSummary();
 }
 
 function markUnsafe(id, unsafe, reason){
@@ -433,67 +445,6 @@ function polarToXY(cx, cy, r, deg){
   return { x: cx + r * Math.sin(rad), y: cy - r * Math.cos(rad) };
 }
 
-function renderAltitudeTape(heights, minhorIndex, minhorbIndex){
-  var el = document.getElementById('altTape');
-  if (!el) return;
-  refreshVizTheme();
-
-  var w = 220, h = 300;
-  var top = 20, bottom = h - 60;
-  var minH = heights[0], maxH = heights[heights.length - 1];
-  var trackX = 70;
-
-  function yFor(val){
-    return bottom - ((val - minH) / (maxH - minH)) * (bottom - top);
-  }
-
-  var ticks = '';
-  for (var i = 0; i < heights.length; i++){
-    var y = yFor(heights[i]);
-    var major = (heights[i] % 20 === 0);
-    ticks += '<line x1="' + (trackX - (major ? 10 : 6)) + '" y1="' + y + '" x2="' + trackX + '" y2="' + y + '" stroke="' + VIZ_COLORS.line + '" stroke-width="1"/>';
-    if (major){
-      ticks += '<text x="' + (trackX - 14) + '" y="' + (y + 4) + '" text-anchor="end" font-family="JetBrains Mono, monospace" font-size="10" fill="' + VIZ_COLORS.muted + '">' + heights[i] + '</text>';
-    }
-  }
-
-  var track = '<line x1="' + trackX + '" y1="' + top + '" x2="' + trackX + '" y2="' + bottom + '" stroke="' + VIZ_COLORS.line + '" stroke-width="2"/>';
-
-  var markers = '';
-
-  if (minhorIndex !== -1){
-    var yFore = yFor(heights[minhorIndex]);
-    markers +=
-      '<g>' +
-        '<line x1="' + trackX + '" y1="' + yFore + '" x2="' + (trackX + 60) + '" y2="' + yFore + '" stroke="' + VIZ_COLORS.accent + '" stroke-width="2"/>' +
-        '<circle cx="' + trackX + '" cy="' + yFore + '" r="4" fill="' + VIZ_COLORS.accent + '"/>' +
-        '<text x="' + (trackX + 64) + '" y="' + (yFore + 4) + '" font-family="JetBrains Mono, monospace" font-size="11" fill="' + VIZ_COLORS.accent + '">' + heights[minhorIndex] + 'm out</text>' +
-      '</g>';
-  } else {
-    markers += '<text x="' + (trackX + 4) + '" y="' + (top + 4) + '" font-family="JetBrains Mono, monospace" font-size="10" fill="' + VIZ_COLORS.danger + '">no safe out height</text>';
-  }
-
-  if (minhorbIndex !== -1){
-    var yBack = yFor(heights[minhorbIndex]);
-    markers +=
-      '<g>' +
-        '<line x1="' + (trackX - 40) + '" y1="' + yBack + '" x2="' + trackX + '" y2="' + yBack + '" stroke="' + VIZ_COLORS.accent2 + '" stroke-width="2" stroke-dasharray="1 0"/>' +
-        '<circle cx="' + trackX + '" cy="' + yBack + '" r="4" fill="' + VIZ_COLORS.accent2 + '"/>' +
-        '<text x="4" y="' + (yBack + 4) + '" font-family="JetBrains Mono, monospace" font-size="11" fill="' + VIZ_COLORS.accent2 + '" text-anchor="start">' + heights[minhorbIndex] + 'm in</text>' +
-      '</g>';
-  } else {
-    markers += '<text x="' + (trackX + 4) + '" y="' + (top + 18) + '" font-family="JetBrains Mono, monospace" font-size="10" fill="' + VIZ_COLORS.danger + '">no safe return height</text>';
-  }
-
-  var svg =
-    '<svg viewBox="0 0 ' + w + ' ' + h + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Altitude tape showing the recommended outbound and return heights">' +
-      '<text x="' + trackX + '" y="14" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="' + VIZ_COLORS.muted + '">ALTITUDE (m)</text>' +
-      track + ticks + markers +
-    '</svg>';
-
-  el.innerHTML = svg;
-}
-
 var WIND_COLORS = ['#7c9cff', '#4fd1c5', '#ffd166']; // 20m, 80m, 120m
 
 // Draws a line from the center out to `length`, with a small triangular
@@ -540,26 +491,33 @@ function renderCompassRose(droneDeg, windPoints){
   }
 
   // Wind arrows first (shorter, so the drone heading arrow sits on top
-  // and always stays readable even if directions overlap).
+  // and always stays readable even if directions overlap). Open-Meteo
+  // reports wind direction as where it blows FROM (met. convention);
+  // we flip it 180 deg here so the arrow points where it's blowing
+  // TO, which lines up intuitively against the drone's heading arrow
+  // (same direction = tailwind, opposite = headwind).
   var windArrows = '';
+  var windFlowDeg = [];
   var radii = [r * 0.45, r * 0.62, r * 0.8];
   for (var j = 0; j < windPoints.length; j++){
     var color = WIND_COLORS[j % WIND_COLORS.length];
-    windArrows += drawArrow(cx, cy, radii[j], windPoints[j].wd, color, 2, null, 0);
+    windFlowDeg[j] = (windPoints[j].wd + 180) % 360;
+    windArrows += drawArrow(cx, cy, radii[j], windFlowDeg[j], color, 2, null, 0);
   }
 
   var droneArrow = drawArrow(cx, cy, r - 4, droneDeg, VIZ_COLORS.ink, 2.5, null, 0);
 
   // Legend: one row per series with its actual heading, since color
-  // alone on an overlapping compass is hard to read at a glance.
+  // alone on an overlapping compass is hard to read at a glance. The
+  // wind rows show the same "blowing to" degree as their arrow.
   var legendRows = [
     { color: VIZ_COLORS.ink, text: 'drone heading ' + droneDeg.toFixed(0) + '\u00B0' }
   ];
-  var windLabels = ['wind 20m ', 'wind 80m ', 'wind 120m '];
+  var windLabels = ['wind 20m \u2192 ', 'wind 80m \u2192 ', 'wind 120m \u2192 '];
   for (var k = 0; k < windPoints.length; k++){
     legendRows.push({
       color: WIND_COLORS[k % WIND_COLORS.length],
-      text: windLabels[k] + windPoints[k].wd.toFixed(0) + '\u00B0'
+      text: windLabels[k] + windFlowDeg[k].toFixed(0) + '\u00B0'
     });
   }
 
@@ -573,8 +531,8 @@ function renderCompassRose(droneDeg, windPoints){
   legend += '</g>';
 
   var svg =
-    '<svg viewBox="0 0 ' + w + ' ' + h + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Compass showing drone heading and wind direction at 20, 80 and 120 meters">' +
-      '<text x="' + cx + '" y="14" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="' + VIZ_COLORS.muted + '">HEADING</text>' +
+    '<svg viewBox="0 0 ' + w + ' ' + h + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Compass showing the drone\'s outbound heading and the direction each wind is blowing toward, at 20, 80 and 120 meters">' +
+      '<text x="' + cx + '" y="14" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="10" fill="' + VIZ_COLORS.muted + '">HEADING (OUT) vs WIND FLOW</text>' +
       ring + ticks + windArrows + droneArrow + legend +
     '</svg>';
 
@@ -600,6 +558,10 @@ async function calcHeight() {
     difflng=startlng-destlng;
     var dronedegrees = Math.atan2(difflng, difflat) * 180 / 3.14159265;
     dronedegrees = (dronedegrees + 360) % 360;  // +360 for implementations where mod returns negative numbers
+    // dronedegrees is used as-is by the headwind/crosswind formulas
+    // below; for anything shown to the person, "heading" should mean
+    // the outbound direction of travel, which is the opposite bearing.
+    var outboundHeading = (dronedegrees + 180) % 360;
     dist=getDistanceFromLatLon(startlat,startlng,destlat, destlng);
 
     // Kick both network calls off together - wind from open-meteo, and
@@ -748,9 +710,9 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
     } else {
         detourNote.textContent = ''
     }
-    document.getElementById('dronedir').innerHTML = dronedegrees.toFixed(tofixed)
+    document.getElementById('dronedir').innerHTML = outboundHeading.toFixed(tofixed)
     // document.getElementById('windrose').innerHTML = wd[0].toFixed(tofixed)
-    document.getElementById('timenowind').innerHTML = (timeupdown[0]+timeupdownback[0]+(routeDist / speedhorizontal)+(routeDist / speedhorizontalback)).toFixed(tofixed)
+    document.getElementById('timenowind').innerHTML = (timeupdown[10]+timeupdownback[10]+(routeDist / speedhorizontal)+(routeDist / speedhorizontalback)).toFixed(tofixed)
     document.getElementById('ws20').innerHTML = (ws[0]).toFixed(1)
     document.getElementById('ws80').innerHTML = (ws[6]).toFixed(1)
     document.getElementById('ws120').innerHTML = (ws[10]).toFixed(1)
@@ -824,12 +786,12 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
         flyWarning.style.display = 'none'
         savingsText.style.display = ''
 
-        travel20=timeupdown[0]+timeupdownback[0]+timehor[0]+timehorb[0]
+        travel120=timeupdown[10]+timeupdownback[10]+timehor[10]+timehorb[10]
         travelopt=timeupdown[minhor]+timehor[minhor]+timeupdownback[minhorb]+timehorb[minhorb]
 
-        document.getElementById('savesec').innerHTML = (travel20-travelopt).toFixed(2)
-        document.getElementById('totaltime20').innerHTML = travel20.toFixed(tofixed)
-        document.getElementById('savepercent').innerHTML = "(" +((travel20-travelopt)/travel20*100).toFixed(2) +"%)"
+        document.getElementById('savesec').innerHTML = (travel120-travelopt).toFixed(2)
+        document.getElementById('totaltime120').innerHTML = travel120.toFixed(tofixed)
+        document.getElementById('savepercent').innerHTML = "(" +((travel120-travelopt)/travel120*100).toFixed(2) +"%)"
     } else {
         savingsText.style.display = 'none'
         var legs = []
@@ -867,8 +829,7 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
     document.getElementById('precipitation').innerHTML = precipitation.toFixed(1)
     document.getElementById('precipitation_probability').innerHTML = precipitation_probability.toFixed(0)
 
-    renderAltitudeTape(heights, minhor, minhorb);
-    renderCompassRose(dronedegrees, [
+    renderCompassRose(outboundHeading, [
         {h: 20, wd: wd[0]},
         {h: 80, wd: wd[6]},
         {h: 120, wd: wd[10]}
