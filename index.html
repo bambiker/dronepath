@@ -455,22 +455,21 @@ details.panel + details.panel{
 
 .viz-row{
   display:flex;
-  gap: 18px;
-  align-items: flex-start;
-  flex-wrap: wrap;
+  justify-content: center;
   margin-bottom: 18px;
 }
 
-.alt-tape, .compass{
+.compass{
   flex: 1;
   min-width: 220px;
+  max-width: 320px;
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: 10px;
 }
 
-.alt-tape svg, .compass svg{
+.compass svg{
   width: 100%;
   height: auto;
   display:block;
@@ -599,8 +598,9 @@ details.panel + details.panel{
       </div>
     </section>
 
-    <section class="panel config-panel">
-      <div class="panel-label">Drone configuration</div>
+    <details class="panel config-panel" id="droneConfigPanel">
+      <summary>Drone: <span id="droneSummaryName">DJI Mavic 3 Classic</span></summary>
+      <div class="disclosure-body">
       <div class="field-grid">
         <label class="field">
           Drone model
@@ -649,7 +649,8 @@ details.panel + details.panel{
       switches the picker to "Custom". A payload coefficient of 2
       means you're carrying the drone's own weight again, which
       halves that leg's speed.</p>
-    </section>
+      </div>
+    </details>
   </div>
 
   <button class="btn btn-primary" id="calcBtn" onclick="getHeight()">Calculate optimal altitude</button>
@@ -714,12 +715,11 @@ details.panel + details.panel{
 
     <p class="savings" id="savingsText">Flying the optimal heights saves
     <strong><span id="savesec"></span> seconds</strong>
-    <span id="savepercent"></span> compared with holding 20m the whole
-    way (<span id="totaltime20"></span>s total,
+    <span id="savepercent"></span> compared with holding 120m the whole
+    way (<span id="totaltime120"></span>s total,
     <span id="timenowind"></span>s with no wind at all).</p>
 
     <div class="viz-row">
-      <div class="alt-tape" id="altTape"></div>
       <div class="compass" id="compassRose"></div>
     </div>
 
