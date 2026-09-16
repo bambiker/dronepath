@@ -5,6 +5,11 @@
 <title>Drone Optimal Route Planner</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <base target="_top">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="favicon-512.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
@@ -27,9 +32,32 @@
   --accent-ink: #1a1002;
   --accent-2: #4fd1c5;
   --danger: #ff5a5a;
+  --grid-line: rgba(79,209,197,0.06);
+  --field-shadow: rgba(0,0,0,0.35);
+  --danger-bg: rgba(255,90,90,0.12);
   --radius: 6px;
   --sans: "Space Grotesk", system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light){
+  :root{
+    --bg: #f3f5fa;
+    --panel: #ffffff;
+    --panel-2: #eef1f8;
+    --line: #d7dceb;
+    --ink: #172037;
+    --muted: #58658a;
+    --accent: #d9670f;
+    --accent-ink: #1a1002;
+    --accent-2: #0e8c7f;
+    --danger: #c93030;
+    --grid-line: rgba(23,32,55,0.045);
+    --field-shadow: rgba(23,32,55,0.12);
+    --danger-bg: rgba(201,48,48,0.10);
+    color-scheme: light;
+  }
 }
 
 *{ box-sizing: border-box; }
@@ -46,8 +74,8 @@ html,body{
 
 body{
   background-image:
-    linear-gradient(rgba(79,209,197,0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(79,209,197,0.05) 1px, transparent 1px);
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
   background-size: 34px 34px;
   background-attachment: fixed;
 }
@@ -252,7 +280,7 @@ details.panel + details.panel{
   border: 1px solid var(--line);
   border-radius: 4px;
   padding: 6px 10px;
-  box-shadow: inset 0 1px 3px rgba(0,0,0,0.35);
+  box-shadow: inset 0 1px 3px var(--field-shadow);
 }
 
 .field-input input{
@@ -392,7 +420,7 @@ details.panel + details.panel{
 .savings strong{ color: var(--ink); }
 
 .fly-warning{
-  background: rgba(255,90,90,0.12);
+  background: var(--danger-bg);
   border: 1px solid var(--danger);
   color: var(--danger);
   padding: 10px 14px;
