@@ -169,13 +169,29 @@ function markUnsafe(id, unsafe, reason){
 // the download small regardless of how long the route is.
 // ---------------------------------------------------------------
 
-var BUILDING_CORRIDOR_HALF_WIDTH_M = 60; // 120 m wide corridor around the route
+var BUILDING_CORRIDOR_HALF_WIDTH_M = 100; // wide enough to find buildings to route around, not just ones right on the line
 var BUILDING_HEIGHT_FALLBACK_M = 7;      // ~2 storeys, used when a building has no height/levels tag
 var BUILDING_TYPE_HEIGHT_M = {
   garage: 3, garages: 3, shed: 3, roof: 3, hut: 3, carport: 3,
   house: 7, residential: 7, detached: 7, terrace: 7, semidetached_house: 7, bungalow: 5,
   apartments: 12, commercial: 10, industrial: 10, retail: 8, office: 12, warehouse: 9
 };
+// We don't fetch building outlines (keeps the download light), so each
+// building is treated as a circle for routing purposes too, sized by
+// a rough footprint guess per type.
+var BUILDING_FOOTPRINT_FALLBACK_M = 8;
+var BUILDING_TYPE_FOOTPRINT_M = {
+  garage: 3, garages: 3, shed: 3, hut: 3, carport: 3, roof: 4,
+  house: 7, detached: 7, semidetached_house: 6, terrace: 5, residential: 7, bungalow: 6,
+  apartments: 14, commercial: 14, industrial: 18, retail: 12, office: 14, warehouse: 20
+};
+var BUILDING_HORIZONTAL_MARGIN_M = 30; // clearance to keep from a building's edge when routing around it
+// A building right at the takeoff/landing point can't be routed
+// around - the drone has to climb through that spot regardless - so
+// only buildings this close to either endpoint still force a higher
+// minimum cruise altitude. Anything further out gets a horizontal
+// detour instead, which is why it no longer needs to.
+var BUILDING_ENDPOINT_PROXIMITY_M = 40;
 
 // Places that are risky to overfly: schools, kindergartens, hospitals
 // and playgrounds. We only know their tags + a center point (no
@@ -249,6 +265,16 @@ function estimateBuildingHeight(tags){
   return BUILDING_HEIGHT_FALLBACK_M;
 }
 
+// Same idea as estimateBuildingHeight, but guessing how wide the
+// building is on the ground, since we need that to know how far to
+// steer around it.
+function estimateBuildingFootprintRadius(tags){
+  tags = tags || {};
+  var type = (tags.building || '').toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(BUILDING_TYPE_FOOTPRINT_M, type)) return BUILDING_TYPE_FOOTPRINT_M[type];
+  return BUILDING_FOOTPRINT_FALLBACK_M;
+}
+
 function classifyHazard(tags){
   tags = tags || {};
   if (tags.amenity === 'school') return 'school';
@@ -300,6 +326,8 @@ async function getOsmDataNearRoute(lat1, lng1, lat2, lng2, bearingDeg){
 
   var buildingCount = 0;
   var maxHeight = 0;
+  var maxHeightNearEndpoints = 0;
+  var buildingList = [];
   var hazards = [];
 
   for (var i = 0; i < elements.length; i++){
@@ -308,34 +336,52 @@ async function getOsmDataNearRoute(lat1, lng1, lat2, lng2, bearingDeg){
       buildingCount++;
       var h = estimateBuildingHeight(tags);
       if (h > maxHeight) maxHeight = h;
+      var bpos = elementLatLng(elements[i]);
+      if (bpos){
+        var footprint = estimateBuildingFootprintRadius(tags);
+        buildingList.push({
+          lat: bpos.lat,
+          lng: bpos.lng,
+          height: h,
+          radius: footprint,
+          clearance: footprint + BUILDING_HORIZONTAL_MARGIN_M
+        });
+        var distToStart = getDistanceFromLatLon(bpos.lat, bpos.lng, lat1, lng1);
+        var distToDest = getDistanceFromLatLon(bpos.lat, bpos.lng, lat2, lng2);
+        if (Math.min(distToStart, distToDest) <= BUILDING_ENDPOINT_PROXIMITY_M && h > maxHeightNearEndpoints){
+          maxHeightNearEndpoints = h;
+        }
+      }
     }
     var hazardType = classifyHazard(tags);
     if (hazardType){
       var pos = elementLatLng(elements[i]);
       if (pos){
-        hazards.push({ lat: pos.lat, lng: pos.lng, type: hazardType, name: tags.name || null, radius: HAZARD_TYPE_RADIUS_M[hazardType] });
+        var hazardRadius = HAZARD_TYPE_RADIUS_M[hazardType];
+        hazards.push({ lat: pos.lat, lng: pos.lng, type: hazardType, name: tags.name || null, radius: hazardRadius, clearance: hazardRadius + HAZARD_SAFETY_MARGIN_M });
       }
     }
   }
 
   return {
-    buildings: { count: buildingCount, maxHeight: maxHeight },
+    buildings: { count: buildingCount, maxHeight: maxHeight, maxHeightNearEndpoints: maxHeightNearEndpoints, list: buildingList },
     hazards: hazards
   };
 }
 
-// Straight line by default. If that line passes within a hazard's
-// (radius + safety margin) of its center, we insert one waypoint per
-// blocking hazard, offset just far enough to clear it on whichever
-// side needs the smaller detour. Good enough for the isolated,
-// one-or-two-obstacle case this app is meant for - not a full path
-// planner, so it's worth a glance on the map before flying.
-function computeAvoidanceRoute(lat1, lng1, lat2, lng2, hazards){
+// Straight line by default. If that line passes within an obstacle's
+// clearance of its center, we insert one waypoint per blocking
+// obstacle (building or hazard alike), offset just far enough to
+// clear it on whichever side needs the smaller detour. Good enough
+// for the isolated, few-obstacle case this app is meant for - not a
+// full path planner, so it's worth a glance on the map before flying.
+function computeAvoidanceRoute(lat1, lng1, lat2, lng2, obstacles){
   var straightDist = getDistanceFromLatLon(lat1, lng1, lat2, lng2);
   var straightPath = [{ lat: lat1, lng: lng1 }, { lat: lat2, lng: lng2 }];
+  var empty = { path: straightPath, distance: straightDist, buildingsAvoided: 0, hazardsAvoided: 0 };
 
-  if (straightDist < 10 || !hazards || hazards.length === 0){
-    return { path: straightPath, distance: straightDist, blockingCount: 0 };
+  if (straightDist < 10 || !obstacles || obstacles.length === 0){
+    return empty;
   }
 
   // Local flat-earth projection centered on the start point - fine
@@ -356,30 +402,31 @@ function computeAvoidanceRoute(lat1, lng1, lat2, lng2, hazards){
   var px = -uy, py = ux;
 
   var blocking = [];
-  for (var i = 0; i < hazards.length; i++){
-    var hz = hazards[i];
-    var hp = toLocal(hz.lat, hz.lng);
-    var t = hp.x * ux + hp.y * uy;
-    var d = hp.x * px + hp.y * py;
-    var clearance = hz.radius + HAZARD_SAFETY_MARGIN_M;
-    if (t >= 0 && t <= routeLen && Math.abs(d) < clearance){
-      blocking.push({ t: t, d: d, clearance: clearance });
+  for (var i = 0; i < obstacles.length; i++){
+    var ob = obstacles[i];
+    var op = toLocal(ob.lat, ob.lng);
+    var t = op.x * ux + op.y * uy;
+    var d = op.x * px + op.y * py;
+    if (t >= 0 && t <= routeLen && Math.abs(d) < ob.clearance){
+      blocking.push({ t: t, d: d, clearance: ob.clearance, kind: ob.kind });
     }
   }
 
   if (blocking.length === 0){
-    return { path: straightPath, distance: straightDist, blockingCount: 0 };
+    return empty;
   }
 
   blocking.sort(function(a, b){ return a.t - b.t; });
 
   var pathLocal = [{ x: 0, y: 0 }];
+  var buildingsAvoided = 0, hazardsAvoided = 0;
   for (var j = 0; j < blocking.length; j++){
     var b = blocking[j];
     var posA = b.d + b.clearance;
     var posB = b.d - b.clearance;
     var pos = (Math.abs(posA) <= Math.abs(posB)) ? posA : posB;
     pathLocal.push({ x: ux * b.t + px * pos, y: uy * b.t + py * pos });
+    if (b.kind === 'building') buildingsAvoided++; else hazardsAvoided++;
   }
   pathLocal.push(dest);
 
@@ -389,7 +436,7 @@ function computeAvoidanceRoute(lat1, lng1, lat2, lng2, hazards){
     totalDist += getDistanceFromLatLon(path[k - 1].lat, path[k - 1].lng, path[k].lat, path[k].lng);
   }
 
-  return { path: path, distance: totalDist, blockingCount: blocking.length };
+  return { path: path, distance: totalDist, buildingsAvoided: buildingsAvoided, hazardsAvoided: hazardsAvoided };
 }
 
 async function getJSON() {
@@ -576,10 +623,20 @@ async function calcHeight() {
     const osmData = await osmPromise;
     const buildings = osmData ? osmData.buildings : null;
     const hazards = osmData ? osmData.hazards : [];
+    const buildingList = buildings ? buildings.list : [];
 
-    const avoidance = computeAvoidanceRoute(startlat, startlng, destlat, destlng, hazards);
+    // Buildings and hazard zones are both routed around the same way -
+    // horizontally, with their own clearance - so they're merged into
+    // one obstacle list for the avoidance pass.
+    const obstacles = buildingList.map(function(b){
+      return { lat: b.lat, lng: b.lng, clearance: b.clearance, kind: 'building' };
+    }).concat(hazards.map(function(h){
+      return { lat: h.lat, lng: h.lng, clearance: h.clearance, kind: 'hazard' };
+    }));
+
+    const avoidance = computeAvoidanceRoute(startlat, startlng, destlat, destlng, obstacles);
     const routeDist = avoidance.distance;
-    renderHazardsAndRoute(hazards, avoidance.path);
+    renderHazardsAndRoute(hazards, buildingList, avoidance.path);
 
     const d = new Date();
     let hour = d.getUTCHours();
@@ -669,7 +726,10 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
     //  - the crosswind component of the average wind meets or exceeds
     //    the drone's horizontal speed for that leg - beyond that point
     //    the drone can't hold its course at all, regardless of speed.
-    var maxBuildingHeight = buildings ? buildings.maxHeight : 0;
+    // Buildings elsewhere along the route are handled by the
+    // horizontal detour above; only ones right at the takeoff/landing
+    // point (which can't be routed around) still raise this floor.
+    var maxBuildingHeight = buildings ? buildings.maxHeightNearEndpoints : 0;
     var minSafeAltitude = maxBuildingHeight > 0 ? (maxBuildingHeight + 20) : 20;
     var windResistance = parseFloat(document.getElementById('windres').value);
 
@@ -705,8 +765,12 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
     document.getElementById('distance').innerHTML = routeDist.toFixed(tofixed)
     var detourNote = document.getElementById('detourNote')
     var detourExtra = routeDist - dist
-    if (avoidance.blockingCount > 0 && detourExtra > 1){
-        detourNote.textContent = ' (+' + detourExtra.toFixed(0) + 'm detour around ' + avoidance.blockingCount + ' restricted area' + (avoidance.blockingCount===1?'':'s') + ')'
+    var totalAvoided = avoidance.buildingsAvoided + avoidance.hazardsAvoided
+    if (totalAvoided > 0 && detourExtra > 1){
+        var avoidedParts = []
+        if (avoidance.buildingsAvoided > 0) avoidedParts.push(avoidance.buildingsAvoided + ' building' + (avoidance.buildingsAvoided===1?'':'s'))
+        if (avoidance.hazardsAvoided > 0) avoidedParts.push(avoidance.hazardsAvoided + ' restricted area' + (avoidance.hazardsAvoided===1?'':'s'))
+        detourNote.textContent = ' (+' + detourExtra.toFixed(0) + 'm detour around ' + avoidedParts.join(' and ') + ')'
     } else {
         detourNote.textContent = ''
     }
@@ -729,7 +793,7 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
     document.getElementById('timefore120').innerHTML = (timeupdown[10]+timehor[10]).toFixed(tofixed)
     document.getElementById('timeback120').innerHTML = (timeupdownback[10]+timehorb[10]).toFixed(tofixed)
 
-    var unsafeReasonBuilding = "Below the minimum safe height above buildings on this route (min " + minSafeAltitude.toFixed(0) + " m).";
+    var unsafeReasonBuilding = "Below the minimum safe height above buildings right at takeoff/landing (min " + minSafeAltitude.toFixed(0) + " m).";
     var unsafeReasonGust = "Estimated gust here is at or above this drone's rated wind resistance (" + windResistance.toFixed(1) + " m/s).";
     var unsafeReasonCrossOut = "The crosswind component here is at or above this drone's outbound speed - it couldn't hold this course.";
     var unsafeReasonCrossBack = "The crosswind component here is at or above this drone's return speed - it couldn't hold this course.";
@@ -755,12 +819,18 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
     var buildingInfo = document.getElementById('buildingInfo')
     buildingInfo.classList.remove('warning-hint')
     if (buildings === null){
-        buildingInfo.innerHTML = "Couldn't load building data from OpenStreetMap for this route, so only wind is being checked right now &mdash; heights below 20 m above nearby buildings might not actually be safe."
+        buildingInfo.innerHTML = "Couldn't load building data from OpenStreetMap for this route, so buildings aren't being checked right now."
         buildingInfo.classList.add('warning-hint')
     } else if (buildings.count === 0){
-        buildingInfo.innerHTML = "No buildings found near this route in OpenStreetMap, so no extra height is needed for obstacle clearance."
+        buildingInfo.innerHTML = "No buildings found near this route in OpenStreetMap."
     } else {
-        buildingInfo.innerHTML = "Checked " + buildings.count + " building" + (buildings.count===1?'':'s') + " from OpenStreetMap near this route &mdash; the tallest is about " + maxBuildingHeight.toFixed(0) + " m, so we won't recommend flying below " + minSafeAltitude.toFixed(0) + " m."
+        var endpointNote = maxBuildingHeight > 0
+            ? " A building right at takeoff or landing (about " + maxBuildingHeight.toFixed(0) + " m) means we won't recommend flying below " + minSafeAltitude.toFixed(0) + " m."
+            : " None of them are right at takeoff or landing, so no extra height floor is needed there."
+        var detourBuildingNote = avoidance.buildingsAvoided > 0
+            ? " The route on the map now steers " + BUILDING_HORIZONTAL_MARGIN_M + "m clear of " + avoidance.buildingsAvoided + " of them."
+            : " The straight-line route already clears the rest by " + BUILDING_HORIZONTAL_MARGIN_M + "m or more."
+        buildingInfo.innerHTML = "Checked " + buildings.count + " building" + (buildings.count===1?'':'s') + " from OpenStreetMap near this route." + detourBuildingNote + endpointNote
     }
     buildingInfo.style.display = 'block'
 
@@ -772,8 +842,8 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
     } else if (hazards.length === 0){
         hazardInfo.innerHTML = "No schools, kindergartens, hospitals or playgrounds found near this route in OpenStreetMap."
     } else {
-        var detourText = avoidance.blockingCount > 0
-            ? "The route on the map now detours around " + avoidance.blockingCount + " of them."
+        var detourText = avoidance.hazardsAvoided > 0
+            ? "The route on the map now detours around " + avoidance.hazardsAvoided + " of them."
             : "The straight-line route already clears all of them."
         hazardInfo.innerHTML = "Found " + hazards.length + " restricted area" + (hazards.length===1?'':'s') + " (schools, kindergartens, hospitals, playgrounds) near this route, marked in red on the map. " + detourText
     }
@@ -800,7 +870,7 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
 
         var reasonBits = []
         if (minSafeAltitude > 120){
-            reasonBits.push("buildings along the route need about " + minSafeAltitude.toFixed(0) + " m of clearance, above the 120 m ceiling we check")
+            reasonBits.push("a building at takeoff/landing needs about " + minSafeAltitude.toFixed(0) + " m of clearance, above the 120 m ceiling we check")
         }
         var gustBlocksAll = true
         for (i=0;i<heights.length; i++){
@@ -854,14 +924,16 @@ subdomains:['mt0','mt1','mt2','mt3']
 
 map.attributionControl.setPrefix('Google map image') //remove flag
 
-// Hazard zones (schools/kindergartens/hospitals/playgrounds) and the
-// route around them. Cleared and redrawn on every calculation instead
-// of piling up new layers each time.
+// Buildings, hazard zones (schools/kindergartens/hospitals/playgrounds)
+// and the route around them. Cleared and redrawn on every calculation
+// instead of piling up new layers each time.
+var buildingLayer = L.layerGroup().addTo(map);
 var hazardLayer = L.layerGroup().addTo(map);
 var routeLine = L.polyline([], { color: '#2f6fed', weight: 4, opacity: 0.85 }).addTo(map);
 
-function renderHazardsAndRoute(hazards, path){
+function renderHazardsAndRoute(hazards, buildings, path){
   hazardLayer.clearLayers();
+  buildingLayer.clearLayers();
   for (var i = 0; i < hazards.length; i++){
     var hz = hazards[i];
     var label = HAZARD_TYPE_LABEL[hz.type] || 'Restricted area';
@@ -873,6 +945,16 @@ function renderHazardsAndRoute(hazards, path){
       fillColor: '#e6484f',
       fillOpacity: 0.22
     }).bindTooltip(label).addTo(hazardLayer);
+  }
+  for (var j = 0; j < buildings.length; j++){
+    var b = buildings[j];
+    L.circle([b.lat, b.lng], {
+      radius: b.radius,
+      color: '#5c7cfa',
+      weight: 1.5,
+      fillColor: '#5c7cfa',
+      fillOpacity: 0.12
+    }).bindTooltip('Building \u2014 ~' + b.height.toFixed(0) + 'm tall').addTo(buildingLayer);
   }
   routeLine.setLatLngs(path.map(function(p){ return [p.lat, p.lng]; }));
 }
