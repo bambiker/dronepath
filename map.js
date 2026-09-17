@@ -169,32 +169,31 @@ function markUnsafe(id, unsafe, reason){
 // the download small regardless of how long the route is.
 // ---------------------------------------------------------------
 
-var BUILDING_CORRIDOR_HALF_WIDTH_M = 100; // wide enough to find buildings to route around, not just ones right on the line
+var BUILDING_CORRIDOR_HALF_WIDTH_M = 60; // 120 m wide corridor around the route
 var BUILDING_HEIGHT_FALLBACK_M = 7;      // ~2 storeys, used when a building has no height/levels tag
 var BUILDING_TYPE_HEIGHT_M = {
   garage: 3, garages: 3, shed: 3, roof: 3, hut: 3, carport: 3,
   house: 7, residential: 7, detached: 7, terrace: 7, semidetached_house: 7, bungalow: 5,
   apartments: 12, commercial: 10, industrial: 10, retail: 8, office: 12, warehouse: 9
 };
-// We don't fetch building outlines (keeps the download light), so each
-// building is treated as a circle for routing purposes too, sized by
-// a rough footprint guess per type.
+// We don't fetch building outlines (keeps the download light), so on
+// the map each building is drawn as a circle sized by a rough
+// footprint guess per type - for reference only, not for routing:
+// buildings are cleared by climbing over the tallest one, not by
+// steering around them (routing around every building in a dense
+// area produced an impractical zigzag; a bit more altitude is simpler
+// and safer than weaving between buildings at low level).
 var BUILDING_FOOTPRINT_FALLBACK_M = 8;
 var BUILDING_TYPE_FOOTPRINT_M = {
   garage: 3, garages: 3, shed: 3, hut: 3, carport: 3, roof: 4,
   house: 7, detached: 7, semidetached_house: 6, terrace: 5, residential: 7, bungalow: 6,
   apartments: 14, commercial: 14, industrial: 18, retail: 12, office: 14, warehouse: 20
 };
-var BUILDING_HORIZONTAL_MARGIN_M = 30; // clearance to keep from a building's edge when routing around it
-// A building right at the takeoff/landing point can't be routed
-// around - the drone has to climb through that spot regardless - so
-// only buildings this close to either endpoint still force a higher
-// minimum cruise altitude. Anything further out gets a horizontal
-// detour instead, which is why it no longer needs to.
-var BUILDING_ENDPOINT_PROXIMITY_M = 40;
 
 // Places that are risky to overfly: schools, kindergartens, hospitals
-// and playgrounds. We only know their tags + a center point (no
+// and playgrounds. Unlike buildings, altitude doesn't make these
+// safe to cross, so these are the ones actually routed around
+// horizontally. We only know their tags + a center point (no
 // footprint, to keep the download small), so each is treated as a
 // circle whose radius is a rough guess by type.
 var HAZARD_CORRIDOR_HALF_WIDTH_M = 220; // wide enough to see nearby hazards and have room to route around them
@@ -326,7 +325,6 @@ async function getOsmDataNearRoute(lat1, lng1, lat2, lng2, bearingDeg){
 
   var buildingCount = 0;
   var maxHeight = 0;
-  var maxHeightNearEndpoints = 0;
   var buildingList = [];
   var hazards = [];
 
@@ -338,19 +336,7 @@ async function getOsmDataNearRoute(lat1, lng1, lat2, lng2, bearingDeg){
       if (h > maxHeight) maxHeight = h;
       var bpos = elementLatLng(elements[i]);
       if (bpos){
-        var footprint = estimateBuildingFootprintRadius(tags);
-        buildingList.push({
-          lat: bpos.lat,
-          lng: bpos.lng,
-          height: h,
-          radius: footprint,
-          clearance: footprint + BUILDING_HORIZONTAL_MARGIN_M
-        });
-        var distToStart = getDistanceFromLatLon(bpos.lat, bpos.lng, lat1, lng1);
-        var distToDest = getDistanceFromLatLon(bpos.lat, bpos.lng, lat2, lng2);
-        if (Math.min(distToStart, distToDest) <= BUILDING_ENDPOINT_PROXIMITY_M && h > maxHeightNearEndpoints){
-          maxHeightNearEndpoints = h;
-        }
+        buildingList.push({ lat: bpos.lat, lng: bpos.lng, height: h, radius: estimateBuildingFootprintRadius(tags) });
       }
     }
     var hazardType = classifyHazard(tags);
@@ -364,17 +350,156 @@ async function getOsmDataNearRoute(lat1, lng1, lat2, lng2, bearingDeg){
   }
 
   return {
-    buildings: { count: buildingCount, maxHeight: maxHeight, maxHeightNearEndpoints: maxHeightNearEndpoints, list: buildingList },
+    buildings: { count: buildingCount, maxHeight: maxHeight, list: buildingList },
     hazards: hazards
   };
 }
 
-// Straight line by default. If that line passes within an obstacle's
-// clearance of its center, we insert one waypoint per blocking
-// obstacle (building or hazard alike), offset just far enough to
-// clear it on whichever side needs the smaller detour. Good enough
-// for the isolated, few-obstacle case this app is meant for - not a
-// full path planner, so it's worth a glance on the map before flying.
+// Distance from a circle's center to the segment p1-p2, used to test
+// whether that segment cuts through the circle at all.
+function distancePointToSegment(p1, p2, point){
+  var dx = p2.x - p1.x, dy = p2.y - p1.y;
+  var lenSq = dx * dx + dy * dy;
+  var t = lenSq === 0 ? 0 : ((point.x - p1.x) * dx + (point.y - p1.y) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  var cx = p1.x + t * dx, cy = p1.y + t * dy;
+  var ddx = point.x - cx, ddy = point.y - cy;
+  return Math.sqrt(ddx * ddx + ddy * ddy);
+}
+
+function segmentCrossesCircle(p1, p2, circle){
+  // Small epsilon so a path that legitimately grazes a circle's own
+  // boundary (which is how we route around it) isn't rejected due to
+  // floating-point noise.
+  return distancePointToSegment(p1, p2, circle) < circle.r - 0.5;
+}
+
+// True if the straight segment nodeA->nodeB is blocked by any circle,
+// with one narrow exception: a step between two ADJACENT points
+// sampled on the same circle's own boundary is allowed to graze that
+// one circle (that's how the path follows a boundary around), but
+// nothing else about that circle is relaxed - a chord to a distant
+// point on its own circle still correctly cuts through the middle.
+function segmentBlocked(nodeA, nodeB, circles){
+  var skipIdx = -1;
+  if (nodeA.owner !== -1 && nodeA.owner === nodeB.owner){
+    var n = VISIBILITY_SAMPLE_POINTS;
+    var diff = Math.abs(nodeA.ring - nodeB.ring);
+    if (Math.min(diff, n - diff) === 1) skipIdx = nodeA.owner;
+  }
+  for (var i = 0; i < circles.length; i++){
+    if (i === skipIdx) continue;
+    if (segmentCrossesCircle(nodeA.p, nodeB.p, circles[i])) return true;
+  }
+  return false;
+}
+
+var VISIBILITY_SAMPLE_POINTS = 16; // points sampled around each obstacle's clearance circle
+
+// Shortest path from `start` to `dest` around a set of circular
+// obstacles, found with A* over a visibility graph: nodes are the
+// start, the destination, and points sampled around each circle's
+// clearance boundary; edges connect any two nodes whose straight
+// line between them doesn't cross a circle. This finds a genuinely
+// short route around the obstacles (as a group, not one at a time),
+// rather than the zigzag you get from nudging around each obstacle
+// independently.
+function findPathAroundCircles(start, dest, circles){
+  var nodes = [{ p: start, owner: -1, ring: -1 }, { p: dest, owner: -1, ring: -1 }];
+  for (var ci = 0; ci < circles.length; ci++){
+    // Sample points sit on a slightly larger ring than the true
+    // clearance radius, sized so the straight chord between two
+    // adjacent samples is exactly tangent to the true circle rather
+    // than cutting inside it (the "sagitta" of a chord vs its arc).
+    var sampleRadius = circles[ci].r / Math.cos(Math.PI / VISIBILITY_SAMPLE_POINTS);
+    for (var k = 0; k < VISIBILITY_SAMPLE_POINTS; k++){
+      var ang = (k / VISIBILITY_SAMPLE_POINTS) * 2 * Math.PI;
+      nodes.push({
+        p: { x: circles[ci].x + sampleRadius * Math.cos(ang), y: circles[ci].y + sampleRadius * Math.sin(ang) },
+        owner: ci,
+        ring: k
+      });
+    }
+  }
+
+  var START = 0, DEST = 1;
+  var n = nodes.length;
+
+  function dist(a, b){
+    var dx = a.x - b.x, dy = a.y - b.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  var open = [START];
+  var cameFrom = {};
+  var gScore = new Array(n).fill(Infinity);
+  var fScore = new Array(n).fill(Infinity);
+  gScore[START] = 0;
+  fScore[START] = dist(nodes[START].p, nodes[DEST].p);
+
+  while (open.length > 0){
+    var bestAt = 0;
+    for (var oi = 1; oi < open.length; oi++){
+      if (fScore[open[oi]] < fScore[open[bestAt]]) bestAt = oi;
+    }
+    var current = open[bestAt];
+    if (current === DEST) break;
+    open.splice(bestAt, 1);
+
+    for (var ni = 0; ni < n; ni++){
+      if (ni === current) continue;
+      if (segmentBlocked(nodes[current], nodes[ni], circles)) continue;
+      var tentativeG = gScore[current] + dist(nodes[current].p, nodes[ni].p);
+      if (tentativeG < gScore[ni]){
+        cameFrom[ni] = current;
+        gScore[ni] = tentativeG;
+        fScore[ni] = tentativeG + dist(nodes[ni].p, nodes[DEST].p);
+        if (open.indexOf(ni) === -1) open.push(ni);
+      }
+    }
+  }
+
+  if (gScore[DEST] === Infinity){
+    // Shouldn't normally happen (sampled points always offer some way
+    // around isolated circles), but fall back to the straight line
+    // rather than fail outright.
+    return [nodes[START], nodes[DEST]];
+  }
+
+  var order = [DEST];
+  var cur = DEST;
+  while (cur !== START){
+    cur = cameFrom[cur];
+    order.push(cur);
+  }
+  order.reverse();
+
+  return order.map(function(idx){ return nodes[idx]; });
+}
+
+// Removes waypoints the path doesn't actually need: from each node,
+// jump straight to the farthest later node still reachable in a clear
+// line, skipping everything in between. Turns the graph's
+// boundary-hugging step sequence into a small number of straight legs.
+function smoothPath(pathNodes, circles){
+  if (pathNodes.length <= 2) return pathNodes.map(function(nd){ return nd.p; });
+  var result = [pathNodes[0].p];
+  var i = 0;
+  while (i < pathNodes.length - 1){
+    var j = pathNodes.length - 1;
+    while (j > i + 1 && segmentBlocked(pathNodes[i], pathNodes[j], circles)){
+      j--;
+    }
+    result.push(pathNodes[j].p);
+    i = j;
+  }
+  return result;
+}
+
+// Straight line by default. If it crosses any obstacle's clearance
+// circle, a short detour is found with A* (see findPathAroundCircles)
+// that routes around the obstacles as a group rather than nudging
+// around each one in turn - which is what caused the zigzag before.
 function computeAvoidanceRoute(lat1, lng1, lat2, lng2, obstacles){
   var straightDist = getDistanceFromLatLon(lat1, lng1, lat2, lng2);
   var straightPath = [{ lat: lat1, lng: lng1 }, { lat: lat2, lng: lng2 }];
@@ -396,47 +521,34 @@ function computeAvoidanceRoute(lat1, lng1, lat2, lng2, obstacles){
     return { lat: lat1 + p.y / mPerDegLat, lng: lng1 + p.x / mPerDegLng };
   }
 
-  var dest = toLocal(lat2, lng2);
-  var routeLen = Math.sqrt(dest.x * dest.x + dest.y * dest.y);
-  var ux = dest.x / routeLen, uy = dest.y / routeLen;
-  var px = -uy, py = ux;
+  var startP = { x: 0, y: 0 };
+  var destP = toLocal(lat2, lng2);
 
-  var blocking = [];
-  for (var i = 0; i < obstacles.length; i++){
-    var ob = obstacles[i];
-    var op = toLocal(ob.lat, ob.lng);
-    var t = op.x * ux + op.y * uy;
-    var d = op.x * px + op.y * py;
-    if (t >= 0 && t <= routeLen && Math.abs(d) < ob.clearance){
-      blocking.push({ t: t, d: d, clearance: ob.clearance, kind: ob.kind });
+  var circles = obstacles.map(function(ob){
+    var c = toLocal(ob.lat, ob.lng);
+    return { x: c.x, y: c.y, r: ob.clearance, kind: ob.kind };
+  });
+
+  var crossedBuildings = 0, crossedHazards = 0;
+  for (var ci = 0; ci < circles.length; ci++){
+    if (segmentCrossesCircle(startP, destP, circles[ci])){
+      if (circles[ci].kind === 'building') crossedBuildings++; else crossedHazards++;
     }
   }
-
-  if (blocking.length === 0){
+  if (crossedBuildings === 0 && crossedHazards === 0){
     return empty;
   }
 
-  blocking.sort(function(a, b){ return a.t - b.t; });
+  var pathNodes = findPathAroundCircles(startP, destP, circles);
+  var smoothed = smoothPath(pathNodes, circles);
 
-  var pathLocal = [{ x: 0, y: 0 }];
-  var buildingsAvoided = 0, hazardsAvoided = 0;
-  for (var j = 0; j < blocking.length; j++){
-    var b = blocking[j];
-    var posA = b.d + b.clearance;
-    var posB = b.d - b.clearance;
-    var pos = (Math.abs(posA) <= Math.abs(posB)) ? posA : posB;
-    pathLocal.push({ x: ux * b.t + px * pos, y: uy * b.t + py * pos });
-    if (b.kind === 'building') buildingsAvoided++; else hazardsAvoided++;
-  }
-  pathLocal.push(dest);
-
-  var path = pathLocal.map(toLatLng);
+  var path = smoothed.map(toLatLng);
   var totalDist = 0;
   for (var k = 1; k < path.length; k++){
     totalDist += getDistanceFromLatLon(path[k - 1].lat, path[k - 1].lng, path[k].lat, path[k].lng);
   }
 
-  return { path: path, distance: totalDist, buildingsAvoided: buildingsAvoided, hazardsAvoided: hazardsAvoided };
+  return { path: path, distance: totalDist, buildingsAvoided: crossedBuildings, hazardsAvoided: crossedHazards };
 }
 
 async function getJSON() {
@@ -625,14 +737,15 @@ async function calcHeight() {
     const hazards = osmData ? osmData.hazards : [];
     const buildingList = buildings ? buildings.list : [];
 
-    // Buildings and hazard zones are both routed around the same way -
-    // horizontally, with their own clearance - so they're merged into
-    // one obstacle list for the avoidance pass.
-    const obstacles = buildingList.map(function(b){
-      return { lat: b.lat, lng: b.lng, clearance: b.clearance, kind: 'building' };
-    }).concat(hazards.map(function(h){
+    // Only hazard zones get routed around horizontally - altitude
+    // doesn't make them safe to cross. Buildings are cleared by
+    // climbing over the tallest one instead: detouring around every
+    // building in a dense area produced an impractical zigzag, and a
+    // bit more altitude is simpler and safer than weaving between
+    // buildings at low level.
+    const obstacles = hazards.map(function(h){
       return { lat: h.lat, lng: h.lng, clearance: h.clearance, kind: 'hazard' };
-    }));
+    });
 
     const avoidance = computeAvoidanceRoute(startlat, startlng, destlat, destlng, obstacles);
     const routeDist = avoidance.distance;
@@ -729,7 +842,7 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
     // Buildings elsewhere along the route are handled by the
     // horizontal detour above; only ones right at the takeoff/landing
     // point (which can't be routed around) still raise this floor.
-    var maxBuildingHeight = buildings ? buildings.maxHeightNearEndpoints : 0;
+    var maxBuildingHeight = buildings ? buildings.maxHeight : 0;
     var minSafeAltitude = maxBuildingHeight > 0 ? (maxBuildingHeight + 20) : 20;
     var windResistance = parseFloat(document.getElementById('windres').value);
 
@@ -793,7 +906,7 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
     document.getElementById('timefore120').innerHTML = (timeupdown[10]+timehor[10]).toFixed(tofixed)
     document.getElementById('timeback120').innerHTML = (timeupdownback[10]+timehorb[10]).toFixed(tofixed)
 
-    var unsafeReasonBuilding = "Below the minimum safe height above buildings right at takeoff/landing (min " + minSafeAltitude.toFixed(0) + " m).";
+    var unsafeReasonBuilding = "Below the minimum safe height above buildings on this route (min " + minSafeAltitude.toFixed(0) + " m).";
     var unsafeReasonGust = "Estimated gust here is at or above this drone's rated wind resistance (" + windResistance.toFixed(1) + " m/s).";
     var unsafeReasonCrossOut = "The crosswind component here is at or above this drone's outbound speed - it couldn't hold this course.";
     var unsafeReasonCrossBack = "The crosswind component here is at or above this drone's return speed - it couldn't hold this course.";
@@ -819,18 +932,12 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
     var buildingInfo = document.getElementById('buildingInfo')
     buildingInfo.classList.remove('warning-hint')
     if (buildings === null){
-        buildingInfo.innerHTML = "Couldn't load building data from OpenStreetMap for this route, so buildings aren't being checked right now."
+        buildingInfo.innerHTML = "Couldn't load building data from OpenStreetMap for this route, so only wind is being checked right now &mdash; heights below 20 m above nearby buildings might not actually be safe."
         buildingInfo.classList.add('warning-hint')
     } else if (buildings.count === 0){
-        buildingInfo.innerHTML = "No buildings found near this route in OpenStreetMap."
+        buildingInfo.innerHTML = "No buildings found near this route in OpenStreetMap, so no extra height is needed for obstacle clearance."
     } else {
-        var endpointNote = maxBuildingHeight > 0
-            ? " A building right at takeoff or landing (about " + maxBuildingHeight.toFixed(0) + " m) means we won't recommend flying below " + minSafeAltitude.toFixed(0) + " m."
-            : " None of them are right at takeoff or landing, so no extra height floor is needed there."
-        var detourBuildingNote = avoidance.buildingsAvoided > 0
-            ? " The route on the map now steers " + BUILDING_HORIZONTAL_MARGIN_M + "m clear of " + avoidance.buildingsAvoided + " of them."
-            : " The straight-line route already clears the rest by " + BUILDING_HORIZONTAL_MARGIN_M + "m or more."
-        buildingInfo.innerHTML = "Checked " + buildings.count + " building" + (buildings.count===1?'':'s') + " from OpenStreetMap near this route." + detourBuildingNote + endpointNote
+        buildingInfo.innerHTML = "Checked " + buildings.count + " building" + (buildings.count===1?'':'s') + " from OpenStreetMap near this route &mdash; the tallest is about " + maxBuildingHeight.toFixed(0) + " m, so we won't recommend flying below " + minSafeAltitude.toFixed(0) + " m. Buildings are shown in faint blue on the map for reference."
     }
     buildingInfo.style.display = 'block'
 
@@ -870,7 +977,7 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
 
         var reasonBits = []
         if (minSafeAltitude > 120){
-            reasonBits.push("a building at takeoff/landing needs about " + minSafeAltitude.toFixed(0) + " m of clearance, above the 120 m ceiling we check")
+            reasonBits.push("buildings along the route need about " + minSafeAltitude.toFixed(0) + " m of clearance, above the 120 m ceiling we check")
         }
         var gustBlocksAll = true
         for (i=0;i<heights.length; i++){
