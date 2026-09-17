@@ -375,26 +375,43 @@ function segmentCrossesCircle(p1, p2, circle){
 }
 
 // True if the straight segment nodeA->nodeB is blocked by any circle,
-// with one narrow exception: a step between two ADJACENT points
+// with two narrow exceptions: a step between two ADJACENT points
 // sampled on the same circle's own boundary is allowed to graze that
-// one circle (that's how the path follows a boundary around), but
-// nothing else about that circle is relaxed - a chord to a distant
-// point on its own circle still correctly cuts through the middle.
-function segmentBlocked(nodeA, nodeB, circles){
+// circle (that's how the path follows a boundary around); and a
+// circle the start or destination point already sits inside of is
+// skipped for edges touching that exact point, since no route can
+// avoid a zone it has to take off or land inside of - it should still
+// clear that circle everywhere else along the way.
+function segmentBlocked(nodeA, nodeB, circles, trappedForStart, trappedForDest){
   var skipIdx = -1;
   if (nodeA.owner !== -1 && nodeA.owner === nodeB.owner){
     var n = VISIBILITY_SAMPLE_POINTS;
     var diff = Math.abs(nodeA.ring - nodeB.ring);
     if (Math.min(diff, n - diff) === 1) skipIdx = nodeA.owner;
   }
+  var touchesStart = !!(nodeA.isStart || nodeB.isStart);
+  var touchesDest = !!(nodeA.isDest || nodeB.isDest);
   for (var i = 0; i < circles.length; i++){
     if (i === skipIdx) continue;
+    if (touchesStart && trappedForStart && trappedForStart.indexOf(i) !== -1) continue;
+    if (touchesDest && trappedForDest && trappedForDest.indexOf(i) !== -1) continue;
     if (segmentCrossesCircle(nodeA.p, nodeB.p, circles[i])) return true;
   }
   return false;
 }
 
 var VISIBILITY_SAMPLE_POINTS = 16; // points sampled around each obstacle's clearance circle
+
+// Which circles a point already sits inside of (closer to the center
+// than the required clearance) - there's no avoiding those from here.
+function trappingCircles(point, circles){
+  var trapped = [];
+  for (var i = 0; i < circles.length; i++){
+    var dx = point.x - circles[i].x, dy = point.y - circles[i].y;
+    if (Math.sqrt(dx * dx + dy * dy) < circles[i].r) trapped.push(i);
+  }
+  return trapped;
+}
 
 // Shortest path from `start` to `dest` around a set of circular
 // obstacles, found with A* over a visibility graph: nodes are the
@@ -404,8 +421,11 @@ var VISIBILITY_SAMPLE_POINTS = 16; // points sampled around each obstacle's clea
 // short route around the obstacles (as a group, not one at a time),
 // rather than the zigzag you get from nudging around each obstacle
 // independently.
-function findPathAroundCircles(start, dest, circles){
-  var nodes = [{ p: start, owner: -1, ring: -1 }, { p: dest, owner: -1, ring: -1 }];
+function findPathAroundCircles(start, dest, circles, trappedForStart, trappedForDest){
+  var nodes = [
+    { p: start, owner: -1, ring: -1, isStart: true },
+    { p: dest, owner: -1, ring: -1, isDest: true }
+  ];
   for (var ci = 0; ci < circles.length; ci++){
     // Sample points sit on a slightly larger ring than the true
     // clearance radius, sized so the straight chord between two
@@ -448,7 +468,7 @@ function findPathAroundCircles(start, dest, circles){
 
     for (var ni = 0; ni < n; ni++){
       if (ni === current) continue;
-      if (segmentBlocked(nodes[current], nodes[ni], circles)) continue;
+      if (segmentBlocked(nodes[current], nodes[ni], circles, trappedForStart, trappedForDest)) continue;
       var tentativeG = gScore[current] + dist(nodes[current].p, nodes[ni].p);
       if (tentativeG < gScore[ni]){
         cameFrom[ni] = current;
@@ -481,13 +501,13 @@ function findPathAroundCircles(start, dest, circles){
 // jump straight to the farthest later node still reachable in a clear
 // line, skipping everything in between. Turns the graph's
 // boundary-hugging step sequence into a small number of straight legs.
-function smoothPath(pathNodes, circles){
+function smoothPath(pathNodes, circles, trappedForStart, trappedForDest){
   if (pathNodes.length <= 2) return pathNodes.map(function(nd){ return nd.p; });
   var result = [pathNodes[0].p];
   var i = 0;
   while (i < pathNodes.length - 1){
     var j = pathNodes.length - 1;
-    while (j > i + 1 && segmentBlocked(pathNodes[i], pathNodes[j], circles)){
+    while (j > i + 1 && segmentBlocked(pathNodes[i], pathNodes[j], circles, trappedForStart, trappedForDest)){
       j--;
     }
     result.push(pathNodes[j].p);
@@ -503,7 +523,7 @@ function smoothPath(pathNodes, circles){
 function computeAvoidanceRoute(lat1, lng1, lat2, lng2, obstacles){
   var straightDist = getDistanceFromLatLon(lat1, lng1, lat2, lng2);
   var straightPath = [{ lat: lat1, lng: lng1 }, { lat: lat2, lng: lng2 }];
-  var empty = { path: straightPath, distance: straightDist, buildingsAvoided: 0, hazardsAvoided: 0 };
+  var empty = { path: straightPath, distance: straightDist, buildingsAvoided: 0, hazardsAvoided: 0, trapped: [] };
 
   if (straightDist < 10 || !obstacles || obstacles.length === 0){
     return empty;
@@ -529,18 +549,31 @@ function computeAvoidanceRoute(lat1, lng1, lat2, lng2, obstacles){
     return { x: c.x, y: c.y, r: ob.clearance, kind: ob.kind };
   });
 
+  // Obstacles the start or destination point is already inside of -
+  // no route can clear those right at that exact point (you have to
+  // take off or land there), so they're excluded from "avoided" and
+  // reported separately as a warning instead.
+  var trappedForStart = trappingCircles(startP, circles);
+  var trappedForDest = trappingCircles(destP, circles);
+  var trappedAt = {};
+  trappedForStart.forEach(function(i){ trappedAt[i] = trappedAt[i] || {}; trappedAt[i].atStart = true; });
+  trappedForDest.forEach(function(i){ trappedAt[i] = trappedAt[i] || {}; trappedAt[i].atDest = true; });
+
   var crossedBuildings = 0, crossedHazards = 0;
+  var trapped = [];
   for (var ci = 0; ci < circles.length; ci++){
-    if (segmentCrossesCircle(startP, destP, circles[ci])){
+    if (trappedAt[ci]){
+      trapped.push({ type: obstacles[ci].type || null, name: obstacles[ci].name || null, kind: circles[ci].kind, atStart: !!trappedAt[ci].atStart, atDest: !!trappedAt[ci].atDest });
+    } else if (segmentCrossesCircle(startP, destP, circles[ci])){
       if (circles[ci].kind === 'building') crossedBuildings++; else crossedHazards++;
     }
   }
-  if (crossedBuildings === 0 && crossedHazards === 0){
+  if (crossedBuildings === 0 && crossedHazards === 0 && trapped.length === 0){
     return empty;
   }
 
-  var pathNodes = findPathAroundCircles(startP, destP, circles);
-  var smoothed = smoothPath(pathNodes, circles);
+  var pathNodes = findPathAroundCircles(startP, destP, circles, trappedForStart, trappedForDest);
+  var smoothed = smoothPath(pathNodes, circles, trappedForStart, trappedForDest);
 
   var path = smoothed.map(toLatLng);
   var totalDist = 0;
@@ -548,7 +581,7 @@ function computeAvoidanceRoute(lat1, lng1, lat2, lng2, obstacles){
     totalDist += getDistanceFromLatLon(path[k - 1].lat, path[k - 1].lng, path[k].lat, path[k].lng);
   }
 
-  return { path: path, distance: totalDist, buildingsAvoided: crossedBuildings, hazardsAvoided: crossedHazards };
+  return { path: path, distance: totalDist, buildingsAvoided: crossedBuildings, hazardsAvoided: crossedHazards, trapped: trapped };
 }
 
 async function getJSON() {
@@ -744,7 +777,7 @@ async function calcHeight() {
     // bit more altitude is simpler and safer than weaving between
     // buildings at low level.
     const obstacles = hazards.map(function(h){
-      return { lat: h.lat, lng: h.lng, clearance: h.clearance, kind: 'hazard' };
+      return { lat: h.lat, lng: h.lng, clearance: h.clearance, kind: 'hazard', type: h.type, name: h.name };
     });
 
     const avoidance = computeAvoidanceRoute(startlat, startlng, destlat, destlng, obstacles);
@@ -953,6 +986,20 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
             ? "The route on the map now detours around " + avoidance.hazardsAvoided + " of them."
             : "The straight-line route already clears all of them."
         hazardInfo.innerHTML = "Found " + hazards.length + " restricted area" + (hazards.length===1?'':'s') + " (schools, kindergartens, hospitals, playgrounds) near this route, marked in red on the map. " + detourText
+
+        var trappedList = avoidance.trapped || []
+        if (trappedList.length > 0){
+            var trappedNames = trappedList.map(function(t){
+                var label = HAZARD_TYPE_LABEL[t.type] || 'restricted area'
+                if (t.name) label += ' (' + t.name + ')'
+                var where = (t.atStart && t.atDest) ? 'start and destination' : (t.atStart ? 'start point' : 'destination point')
+                return label + ' at the ' + where
+            })
+            var trappedWarning = document.createElement('span')
+            trappedWarning.className = 'warning-hint'
+            trappedWarning.innerHTML = ' Your ' + trappedNames.join(', and your ') + ' is within its normal clearance distance \u2014 taking off or landing there is fine, but the route can only steer clear of it once it\'s away from that point.'
+            hazardInfo.appendChild(trappedWarning)
+        }
     }
     hazardInfo.style.display = 'block'
 
