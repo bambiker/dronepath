@@ -330,6 +330,46 @@ function polygonToStr(polygon){
 // with its own (differently sized) corridor, tags + center only - no
 // full geometries - so the download stays small and quick even when
 // the route is long.
+// overpass-api.de (the main public instance) can be slow when the
+// query area is large - since we now widen the search corridor for
+// longer routes, that made 504s from the frontend proxy more common.
+// [timeout:N] below asks Overpass itself for a bigger execution
+// budget, OVERPASS_FETCH_TIMEOUT_MS gives the fetch a little more
+// headroom than that so we don't cut it off first, and a second
+// public mirror is tried if the first one fails or times out.
+var OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter'
+];
+var OVERPASS_QUERY_TIMEOUT_S = 45;
+var OVERPASS_FETCH_TIMEOUT_MS = (OVERPASS_QUERY_TIMEOUT_S + 15) * 1000;
+
+async function fetchOverpass(query){
+  var lastErr = null;
+  for (var i = 0; i < OVERPASS_ENDPOINTS.length; i++){
+    var controller = new AbortController();
+    var timer = setTimeout(function(){ controller.abort(); }, OVERPASS_FETCH_TIMEOUT_MS);
+    try {
+      var response = await fetch(OVERPASS_ENDPOINTS[i], {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'data=' + encodeURIComponent(query),
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      if (!response.ok){
+        lastErr = new Error('Overpass request failed: ' + response.status);
+        continue; // try the next mirror
+      }
+      return await response.json();
+    } catch (err){
+      clearTimeout(timer);
+      lastErr = err; // network error or our own abort - try the next mirror
+    }
+  }
+  throw lastErr || new Error('Overpass request failed');
+}
+
 async function getOsmDataNearRoute(lat1, lng1, lat2, lng2, bearingDeg){
   var distM = getDistanceFromLatLon(lat1, lng1, lat2, lng2);
   var buildingHalfWidth = corridorHalfWidth(distM, BUILDING_CORRIDOR_HALF_WIDTH_M, BUILDING_CORRIDOR_MAX_HALF_WIDTH_M, BUILDING_CORRIDOR_DISTANCE_FRACTION);
@@ -337,7 +377,7 @@ async function getOsmDataNearRoute(lat1, lng1, lat2, lng2, bearingDeg){
   var buildingPoly = polygonToStr(routeCorridorPolygon(lat1, lng1, lat2, lng2, bearingDeg, buildingHalfWidth));
   var hazardPoly = polygonToStr(routeCorridorPolygon(lat1, lng1, lat2, lng2, bearingDeg, hazardHalfWidth));
 
-  var query = '[out:json][timeout:25];(' +
+  var query = '[out:json][timeout:' + OVERPASS_QUERY_TIMEOUT_S + '];(' +
     'way["building"](poly:"' + buildingPoly + '");' +
     'node["amenity"~"^(school|kindergarten|hospital)$"](poly:"' + hazardPoly + '");' +
     'way["amenity"~"^(school|kindergarten|hospital)$"](poly:"' + hazardPoly + '");' +
@@ -346,15 +386,7 @@ async function getOsmDataNearRoute(lat1, lng1, lat2, lng2, bearingDeg){
     'way["leisure"="playground"](poly:"' + hazardPoly + '");' +
     ');out tags center;';
 
-  var response = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: 'data=' + encodeURIComponent(query)
-  });
-  if (!response.ok){
-    throw new Error('Overpass request failed: ' + response.status);
-  }
-  var data = await response.json();
+  var data = await fetchOverpass(query);
   var elements = data.elements || [];
 
   var buildingCount = 0;
