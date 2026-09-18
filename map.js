@@ -182,7 +182,16 @@ function markUnsafe(id, unsafe, reason){
 // the download small regardless of how long the route is.
 // ---------------------------------------------------------------
 
-var BUILDING_CORRIDOR_HALF_WIDTH_M = 60; // 120 m wide corridor around the route
+// The corridor half-widths below are a floor, not the final value: the
+// longer the route, the more room the avoidance routing may need to
+// swing sideways around hazards (and each swing risks passing close to
+// an obstacle we didn't fetch because it sat outside a fixed-width
+// corridor). So the actual half-width used per route grows with
+// straight-line distance, capped so the Overpass query never gets
+// huge. See corridorHalfWidth() below.
+var BUILDING_CORRIDOR_HALF_WIDTH_M = 60; // floor - 120 m wide corridor around the route
+var BUILDING_CORRIDOR_MAX_HALF_WIDTH_M = 250;
+var BUILDING_CORRIDOR_DISTANCE_FRACTION = 0.02; // +20 m of half-width per km of route
 var BUILDING_HEIGHT_FALLBACK_M = 7;      // ~2 storeys, used when a building has no height/levels tag
 var BUILDING_TYPE_HEIGHT_M = {
   garage: 3, garages: 3, shed: 3, roof: 3, hut: 3, carport: 3,
@@ -209,7 +218,9 @@ var BUILDING_TYPE_FOOTPRINT_M = {
 // horizontally. We only know their tags + a center point (no
 // footprint, to keep the download small), so each is treated as a
 // circle whose radius is a rough guess by type.
-var HAZARD_CORRIDOR_HALF_WIDTH_M = 220; // wide enough to see nearby hazards and have room to route around them
+var HAZARD_CORRIDOR_HALF_WIDTH_M = 220; // floor - wide enough to see nearby hazards and have room to route around them
+var HAZARD_CORRIDOR_MAX_HALF_WIDTH_M = 700;
+var HAZARD_CORRIDOR_DISTANCE_FRACTION = 0.06; // +60 m of half-width per km of route - hazards get more headroom than buildings since the route actually swings sideways to dodge them
 var HAZARD_SAFETY_MARGIN_M = 20;        // extra buffer added on top of the estimated radius
 var HAZARD_TYPE_RADIUS_M = { school: 60, kindergarten: 40, hospital: 90, playground: 30 };
 var HAZARD_TYPE_LABEL = { school: 'School', kindergarten: 'Kindergarten', hospital: 'Hospital', playground: 'Playground' };
@@ -230,6 +241,13 @@ function offsetLatLng(lat, lng, bearingDeg, distMeters){
   var lat2r = Math.asin(Math.sin(lat1r) * Math.cos(dOverR) + Math.cos(lat1r) * Math.sin(dOverR) * Math.cos(brng));
   var lon2r = lon1r + Math.atan2(Math.sin(brng) * Math.sin(dOverR) * Math.cos(lat1r), Math.cos(dOverR) - Math.sin(lat1r) * Math.sin(lat2r));
   return { lat: rad2deg(lat2r), lng: rad2deg(lon2r) };
+}
+
+// Half-width to actually search, given the straight-line route
+// distance: the floor, plus a slice of the distance, capped at a max
+// so a very long route doesn't blow up the Overpass query.
+function corridorHalfWidth(distM, minHalfWidthM, maxHalfWidthM, distanceFraction){
+  return Math.min(maxHalfWidthM, minHalfWidthM + distM * distanceFraction);
 }
 
 // A thin rectangle hugging the start->destination line, used as the
@@ -313,8 +331,11 @@ function polygonToStr(polygon){
 // full geometries - so the download stays small and quick even when
 // the route is long.
 async function getOsmDataNearRoute(lat1, lng1, lat2, lng2, bearingDeg){
-  var buildingPoly = polygonToStr(routeCorridorPolygon(lat1, lng1, lat2, lng2, bearingDeg, BUILDING_CORRIDOR_HALF_WIDTH_M));
-  var hazardPoly = polygonToStr(routeCorridorPolygon(lat1, lng1, lat2, lng2, bearingDeg, HAZARD_CORRIDOR_HALF_WIDTH_M));
+  var distM = getDistanceFromLatLon(lat1, lng1, lat2, lng2);
+  var buildingHalfWidth = corridorHalfWidth(distM, BUILDING_CORRIDOR_HALF_WIDTH_M, BUILDING_CORRIDOR_MAX_HALF_WIDTH_M, BUILDING_CORRIDOR_DISTANCE_FRACTION);
+  var hazardHalfWidth = corridorHalfWidth(distM, HAZARD_CORRIDOR_HALF_WIDTH_M, HAZARD_CORRIDOR_MAX_HALF_WIDTH_M, HAZARD_CORRIDOR_DISTANCE_FRACTION);
+  var buildingPoly = polygonToStr(routeCorridorPolygon(lat1, lng1, lat2, lng2, bearingDeg, buildingHalfWidth));
+  var hazardPoly = polygonToStr(routeCorridorPolygon(lat1, lng1, lat2, lng2, bearingDeg, hazardHalfWidth));
 
   var query = '[out:json][timeout:25];(' +
     'way["building"](poly:"' + buildingPoly + '");' +
@@ -364,7 +385,9 @@ async function getOsmDataNearRoute(lat1, lng1, lat2, lng2, bearingDeg){
 
   return {
     buildings: { count: buildingCount, maxHeight: maxHeight, list: buildingList },
-    hazards: hazards
+    hazards: hazards,
+    buildingHalfWidthUsed: buildingHalfWidth,
+    hazardHalfWidthUsed: hazardHalfWidth
   };
 }
 
@@ -533,6 +556,30 @@ function smoothPath(pathNodes, circles, trappedForStart, trappedForDest){
 // circle, a short detour is found with A* (see findPathAroundCircles)
 // that routes around the obstacles as a group rather than nudging
 // around each one in turn - which is what caused the zigzag before.
+// How far (in meters) any point of `path` strays sideways from the
+// straight start->destination line. Used to flag when the avoidance
+// route swings wider than the corridor we actually asked OSM about,
+// since anything past that width wasn't checked for buildings/hazards.
+function maxLateralDeviationM(path, lat1, lng1, lat2, lng2){
+  var mPerDegLat = 110540;
+  var mPerDegLng = 111320 * Math.cos(deg2rad(lat1));
+  function toLocal(lat, lng){
+    return { x: (lng - lng1) * mPerDegLng, y: (lat - lat1) * mPerDegLat };
+  }
+  var startP = toLocal(lat1, lng1);
+  var destP = toLocal(lat2, lng2);
+  var dx = destP.x - startP.x, dy = destP.y - startP.y;
+  var lineLen = Math.sqrt(dx * dx + dy * dy);
+  if (lineLen < 1) return 0;
+  var maxDev = 0;
+  for (var i = 0; i < path.length; i++){
+    var p = toLocal(path[i].lat, path[i].lng);
+    var dev = Math.abs((p.x - startP.x) * dy - (p.y - startP.y) * dx) / lineLen;
+    if (dev > maxDev) maxDev = dev;
+  }
+  return maxDev;
+}
+
 function computeAvoidanceRoute(lat1, lng1, lat2, lng2, obstacles){
   var straightDist = getDistanceFromLatLon(lat1, lng1, lat2, lng2);
   var straightPath = [{ lat: lat1, lng: lng1 }, { lat: lat2, lng: lng2 }];
@@ -797,6 +844,15 @@ async function calcHeight() {
     const routeDist = avoidance.distance;
     renderHazardsAndRoute(hazards, buildingList, avoidance.path);
 
+    // The corridor width actually queried grows with route distance
+    // (see corridorHalfWidth), but the avoidance routing itself can
+    // still occasionally swing past it while dodging a cluster of
+    // hazards - flag that so the person knows that stretch wasn't
+    // fully checked, rather than silently trusting it.
+    const hazardHalfWidthUsed = osmData ? osmData.hazardHalfWidthUsed : HAZARD_CORRIDOR_HALF_WIDTH_M;
+    const routeDeviationM = maxLateralDeviationM(avoidance.path, startlat, startlng, destlat, destlng);
+    const routeLeftCheckedArea = osmData !== null && routeDeviationM > hazardHalfWidthUsed;
+
     const d = new Date();
     let hour = d.getUTCHours();
     var mydata = JSON.stringify(json, null, 2);
@@ -1012,6 +1068,13 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
             trappedWarning.className = 'warning-hint'
             trappedWarning.innerHTML = ' Your ' + trappedNames.join(', and your ') + ' is within its normal clearance distance \u2014 taking off or landing there is fine, but the route can only steer clear of it once it\'s away from that point.'
             hazardInfo.appendChild(trappedWarning)
+        }
+
+        if (routeLeftCheckedArea){
+            var corridorWarning = document.createElement('span')
+            corridorWarning.className = 'warning-hint'
+            corridorWarning.innerHTML = ' To dodge these, the route swings about ' + routeDeviationM.toFixed(0) + ' m from the straight line \u2014 further than the ' + hazardHalfWidthUsed.toFixed(0) + ' m either side that was actually checked, so schools/hospitals/etc. further out along that swing may not be accounted for. Double-check that stretch of the route yourself before flying it.'
+            hazardInfo.appendChild(corridorWarning)
         }
     }
     hazardInfo.style.display = 'block'
