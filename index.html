@@ -655,6 +655,7 @@ details.panel + details.panel{
     <div class="panel-label">Result</div>
 
     <div class="fly-warning" id="flyWarning" style="display:none"></div>
+    <div class="fly-warning" id="rainWarning" style="display:none"></div>
 
     <div class="result-headline">
       <div class="readout" id="readoutFore">
@@ -668,10 +669,10 @@ details.panel + details.panel{
     </div>
 
     <p class="savings" id="savingsText">Flying the optimal heights saves
-    <strong><span id="savesec"></span> seconds</strong>
+    <strong><span id="savesec"></span></strong>
     <span id="savepercent"></span> compared with holding 120m the whole
-    way (<span id="totaltime120"></span>s total,
-    <span id="timenowind"></span>s with no wind at all).</p>
+    way (<span id="totaltime120"></span> total,
+    <span id="timenowind"></span> with no wind at all).</p>
 
     <div class="viz-row">
       <div class="compass" id="compassRose"></div>
@@ -682,9 +683,9 @@ details.panel + details.panel{
         <tr><th>Altitude</th><th>Wind</th><th>Gust (est.)</th><th>Heading</th><th>Outbound</th><th>Return</th></tr>
       </thead>
       <tbody>
-        <tr><td>20 m</td><td><span id="ws20"></span> m/s</td><td><span id="gust20"></span> m/s</td><td><span id="wd20"></span>&deg;</td><td><span id="timefore20"></span> s</td><td><span id="timeback20"></span> s</td></tr>
-        <tr><td>80 m</td><td><span id="ws80"></span> m/s</td><td><span id="gust80"></span> m/s</td><td><span id="wd80"></span>&deg;</td><td><span id="timefore80"></span> s</td><td><span id="timeback80"></span> s</td></tr>
-        <tr><td>120 m</td><td><span id="ws120"></span> m/s</td><td><span id="gust120"></span> m/s</td><td><span id="wd120"></span>&deg;</td><td><span id="timefore120"></span> s</td><td><span id="timeback120"></span> s</td></tr>
+        <tr><td>20 m</td><td><span id="ws20"></span> m/s</td><td><span id="gust20"></span> m/s</td><td><span id="wd20"></span>&deg;</td><td><span id="timefore20"></span></td><td><span id="timeback20"></span></td></tr>
+        <tr><td>80 m</td><td><span id="ws80"></span> m/s</td><td><span id="gust80"></span> m/s</td><td><span id="wd80"></span>&deg;</td><td><span id="timefore80"></span></td><td><span id="timeback80"></span></td></tr>
+        <tr><td>120 m</td><td><span id="ws120"></span> m/s</td><td><span id="gust120"></span> m/s</td><td><span id="wd120"></span>&deg;</td><td><span id="timefore120"></span></td><td><span id="timeback120"></span></td></tr>
       </tbody>
     </table>
 
