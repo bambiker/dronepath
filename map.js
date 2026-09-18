@@ -13,6 +13,19 @@ var marker = 0; ////Has the user plotted their location marker?
 var lat1,lat2, lng1, lng2;
 var marker1, marker2, label1, label2;
 
+// Formats a duration given in seconds as "M min S s" (or just "S s" under a minute).
+function formatDuration(totalSeconds, decimals){
+  decimals = (typeof decimals === 'number') ? decimals : 0
+  var sign = totalSeconds < 0 ? '-' : ''
+  var abs = Math.abs(totalSeconds)
+  var mins = Math.floor(abs / 60)
+  var secs = abs - mins * 60
+  if (mins === 0){
+    return sign + secs.toFixed(decimals) + ' s'
+  }
+  return sign + mins + ' min ' + secs.toFixed(decimals) + ' s'
+}
+
 //Function called to initialize / create the map.
 //This is called when the page has loaded.
 
@@ -922,7 +935,7 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
     }
     document.getElementById('dronedir').innerHTML = outboundHeading.toFixed(tofixed)
     // document.getElementById('windrose').innerHTML = wd[0].toFixed(tofixed)
-    document.getElementById('timenowind').innerHTML = (timeupdown[10]+timeupdownback[10]+(routeDist / speedhorizontal)+(routeDist / speedhorizontalback)).toFixed(tofixed)
+    document.getElementById('timenowind').innerHTML = formatDuration(timeupdown[10]+timeupdownback[10]+(routeDist / speedhorizontal)+(routeDist / speedhorizontalback))
     document.getElementById('ws20').innerHTML = (ws[0]).toFixed(1)
     document.getElementById('ws80').innerHTML = (ws[6]).toFixed(1)
     document.getElementById('ws120').innerHTML = (ws[10]).toFixed(1)
@@ -932,12 +945,12 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
     document.getElementById('wd20').innerHTML = (wd[0]).toFixed(0)
     document.getElementById('wd80').innerHTML = (wd[6]).toFixed(0)
     document.getElementById('wd120').innerHTML = (wd[10]).toFixed(0)
-    document.getElementById('timefore20').innerHTML = (timeupdown[0]+timehor[0]).toFixed(tofixed)
-    document.getElementById('timeback20').innerHTML = (timeupdownback[0]+timehorb[0]).toFixed(tofixed)
-    document.getElementById('timefore80').innerHTML = (timeupdown[6]+timehor[6]).toFixed(tofixed)
-    document.getElementById('timeback80').innerHTML = (timeupdownback[6]+timehorb[6]).toFixed(tofixed)
-    document.getElementById('timefore120').innerHTML = (timeupdown[10]+timehor[10]).toFixed(tofixed)
-    document.getElementById('timeback120').innerHTML = (timeupdownback[10]+timehorb[10]).toFixed(tofixed)
+    document.getElementById('timefore20').innerHTML = formatDuration(timeupdown[0]+timehor[0])
+    document.getElementById('timeback20').innerHTML = formatDuration(timeupdownback[0]+timehorb[0])
+    document.getElementById('timefore80').innerHTML = formatDuration(timeupdown[6]+timehor[6])
+    document.getElementById('timeback80').innerHTML = formatDuration(timeupdownback[6]+timehorb[6])
+    document.getElementById('timefore120').innerHTML = formatDuration(timeupdown[10]+timehor[10])
+    document.getElementById('timeback120').innerHTML = formatDuration(timeupdownback[10]+timehorb[10])
 
     var unsafeReasonBuilding = "Below the minimum safe height above buildings on this route (min " + minSafeAltitude.toFixed(0) + " m).";
     var unsafeReasonGust = "Estimated gust here is at or above this drone's rated wind resistance (" + windResistance.toFixed(1) + " m/s).";
@@ -1013,8 +1026,8 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
         travel120=timeupdown[10]+timeupdownback[10]+timehor[10]+timehorb[10]
         travelopt=timeupdown[minhor]+timehor[minhor]+timeupdownback[minhorb]+timehorb[minhorb]
 
-        document.getElementById('savesec').innerHTML = (travel120-travelopt).toFixed(2)
-        document.getElementById('totaltime120').innerHTML = travel120.toFixed(tofixed)
+        document.getElementById('savesec').innerHTML = formatDuration(travel120-travelopt, 1)
+        document.getElementById('totaltime120').innerHTML = formatDuration(travel120)
         document.getElementById('savepercent').innerHTML = "(" +((travel120-travelopt)/travel120*100).toFixed(2) +"%)"
     } else {
         savingsText.style.display = 'none'
@@ -1052,6 +1065,17 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
     document.getElementById('visibility').innerHTML = (visibility/1000).toFixed(0)
     document.getElementById('precipitation').innerHTML = precipitation.toFixed(1)
     document.getElementById('precipitation_probability').innerHTML = precipitation_probability.toFixed(0)
+
+    var rainWarning = document.getElementById('rainWarning')
+    if (precipitation > 0.2 || precipitation_probability >= 50){
+        rainWarning.innerHTML = "\u26A0\uFE0F Rain is likely on this route (" + precipitation_probability.toFixed(0) + "% chance, " + precipitation.toFixed(1) + " mm) &mdash; flying in rain can be dangerous: it can short-circuit electronics, reduce visibility and control, and make surfaces slippery on landing. Consider waiting for drier conditions."
+        rainWarning.style.display = 'block'
+    } else if (precipitation > 0 || precipitation_probability >= 20){
+        rainWarning.innerHTML = "\u26A0\uFE0F There's some chance of rain on this route (" + precipitation_probability.toFixed(0) + "% chance) &mdash; keep an eye on conditions before flying."
+        rainWarning.style.display = 'block'
+    } else {
+        rainWarning.style.display = 'none'
+    }
 
     renderCompassRose(outboundHeading, [
         {h: 20, wd: wd[0]},
