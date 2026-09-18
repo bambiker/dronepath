@@ -200,17 +200,25 @@ var BUILDING_TYPE_HEIGHT_M = {
 };
 // We don't fetch building outlines (keeps the download light), so on
 // the map each building is drawn as a circle sized by a rough
-// footprint guess per type - for reference only, not for routing:
-// buildings are cleared by climbing over the tallest one, not by
-// steering around them (routing around every building in a dense
+// footprint guess per type - for reference only, not for routing.
+// Most buildings are cleared by climbing over the tallest one rather
+// than steering around them (routing around every building in a dense
 // area produced an impractical zigzag; a bit more altitude is simpler
-// and safer than weaving between buildings at low level).
+// and safer than weaving between buildings at low level) - but a
+// building taller than the ceiling we can actually fly at today can't
+// be cleared by climbing at all (see effectiveCeilingM further down,
+// which accounts for wind as well as MAX_FLIGHT_ALTITUDE_M), so those
+// specific ones are routed around horizontally instead, the same way
+// hazards are (see below).
 var BUILDING_FOOTPRINT_FALLBACK_M = 8;
 var BUILDING_TYPE_FOOTPRINT_M = {
   garage: 3, garages: 3, shed: 3, hut: 3, carport: 3, roof: 4,
   house: 7, detached: 7, semidetached_house: 6, terrace: 5, residential: 7, bungalow: 6,
   apartments: 14, commercial: 14, industrial: 18, retail: 12, office: 14, warehouse: 20
 };
+var MAX_FLIGHT_ALTITUDE_M = 120;          // ceiling we check up to (matches the heights[] table below)
+var BUILDING_HEIGHT_SAFETY_MARGIN_M = 20; // vertical buffer added on top of a building's height when climbing over it
+var BUILDING_LATERAL_SAFETY_MARGIN_M = 15; // buffer added on top of a too-tall building's footprint when routing around it
 
 // Places that are risky to overfly: schools, kindergartens, hospitals
 // and playgrounds. Unlike buildings, altitude doesn't make these
@@ -223,7 +231,7 @@ var HAZARD_CORRIDOR_MAX_HALF_WIDTH_M = 700;
 var HAZARD_CORRIDOR_DISTANCE_FRACTION = 0.06; // +60 m of half-width per km of route - hazards get more headroom than buildings since the route actually swings sideways to dodge them
 var HAZARD_SAFETY_MARGIN_M = 20;        // extra buffer added on top of the estimated radius
 var HAZARD_TYPE_RADIUS_M = { school: 60, kindergarten: 40, hospital: 90, playground: 30 };
-var HAZARD_TYPE_LABEL = { school: 'School', kindergarten: 'Kindergarten', hospital: 'Hospital', playground: 'Playground' };
+var HAZARD_TYPE_LABEL = { school: 'School', kindergarten: 'Kindergarten', hospital: 'Hospital', playground: 'Playground', building: 'Tall building' };
 
 function rad2deg(rad){
   return rad * (180 / Math.PI);
@@ -862,31 +870,6 @@ async function calcHeight() {
     const hazards = osmData ? osmData.hazards : [];
     const buildingList = buildings ? buildings.list : [];
 
-    // Only hazard zones get routed around horizontally - altitude
-    // doesn't make them safe to cross. Buildings are cleared by
-    // climbing over the tallest one instead: detouring around every
-    // building in a dense area produced an impractical zigzag, and a
-    // bit more altitude is simpler and safer than weaving between
-    // buildings at low level.
-    const obstacles = hazards.map(function(h){
-      return { lat: h.lat, lng: h.lng, clearance: h.clearance, kind: 'hazard', type: h.type, name: h.name };
-    });
-
-    const avoidance = computeAvoidanceRoute(startlat, startlng, destlat, destlng, obstacles);
-    const routeDist = avoidance.distance;
-    renderHazardsAndRoute(hazards, buildingList, avoidance.path);
-
-    // The corridor width actually queried grows with route distance
-    // (see corridorHalfWidth), but the avoidance routing itself can
-    // still occasionally swing past it while dodging a cluster of
-    // hazards - flag that so the person knows that stretch wasn't
-    // fully checked, rather than silently trusting it.
-    const hazardHalfWidthUsed = osmData ? osmData.hazardHalfWidthUsed : HAZARD_CORRIDOR_HALF_WIDTH_M;
-    const buildingHalfWidthUsed = osmData ? osmData.buildingHalfWidthUsed : BUILDING_CORRIDOR_HALF_WIDTH_M;
-    const routeDeviationM = maxLateralDeviationM(avoidance.path, startlat, startlng, destlat, destlng);
-    const routeLeftCheckedArea = osmData !== null && routeDeviationM > hazardHalfWidthUsed;
-    const routeLeftCheckedBuildingArea = osmData !== null && routeDeviationM > buildingHalfWidthUsed;
-
     const d = new Date();
     let hour = d.getUTCHours();
     var mydata = JSON.stringify(json, null, 2);
@@ -923,16 +906,22 @@ gustFactor = Math.min(Math.max(gustFactor, 1), 3);
     speedhorizontalback=document.getElementById('hor').value/document.getElementById('payloadback').value;
 
     drag=document.getElementById('drag').value
+    var windResistance = parseFloat(document.getElementById('windres').value);
 
+    // Per-height wind figures (average speed/direction, estimated
+    // gust, crosswind component, and whether that height is flyable
+    // on wind grounds alone) only depend on the forecast and the
+    // drone's own speeds - not on the route distance - so we can work
+    // these out before we know the final (possibly detoured) route
+    // length below.
     heights = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120]
     ws = []
     wd = []
-    timeupdown = []
-    timeupdownback = []
-    timehor = []
-    timehorb = []
     estgust = []
     crosswind = []
+    windResOk = []
+    crosswindOkOut = []
+    crosswindOkBack = []
     for (i=0;i<heights.length; i++) {
     if (heights[i]<80)
             {
@@ -954,45 +943,102 @@ gustFactor = Math.min(Math.max(gustFactor, 1), 3);
    ws[i]=ws80*(120-heights[i])/40+ws120*(heights[i]-80)/40
    wd[i]=wd80*(120-heights[i])/40+wd120*(heights[i]-80)/40
    }
-timeupdown[i] = (heights[i]/speedup)+(heights[i]/speeddown)
-timeupdownback[i] = (heights[i]/speedupback)+(heights[i]/speeddownback)
 diffangle=(wd[i]-dronedegrees)/180*Math.PI
-angle = Math.cos(diffangle)*drag
-timehor[i] = routeDist /  (speedhorizontal+ws[i]*angle)
-timehorb[i] = routeDist / (speedhorizontalback-ws[i]*angle)
 // Gust extrapolated from the 10m gust/average ratio, and the
 // crosswind component (perpendicular to heading) of the average
 // wind - used below as separate flyability checks.
 estgust[i] = ws[i] * gustFactor
 crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
+windResOk[i] = estgust[i] < windResistance
+crosswindOkOut[i] = speedhorizontal > crosswind[i]
+crosswindOkBack[i] = speedhorizontalback > crosswind[i]
+    }
+
+    // Wind alone can put a lower ceiling on today's flight than the
+    // drone's altitude limit - e.g. gusts might only stay under the
+    // drone's rating up to 80 m even though we normally check as high
+    // as 120 m. A building only counts as "too tall to climb over"
+    // once it's taller than whichever ceiling is actually flyable
+    // right now (wind included), not a flat 120 m - otherwise we'd
+    // recommend climbing to a height that the wind rules out anyway.
+    var effectiveCeilingM = 0;
+    for (i=0;i<heights.length; i++) {
+        if (windResOk[i] && crosswindOkOut[i] && crosswindOkBack[i] && heights[i] > effectiveCeilingM){
+            effectiveCeilingM = heights[i]
+        }
+    }
+
+    // Buildings taller than that effective ceiling can't be cleared
+    // by climbing today, so those go into the obstacle list and get
+    // routed around horizontally, exactly like hazards. Buildings
+    // within the ceiling stay in the "climb over the tallest one"
+    // group - maxBuildingHeight below is only the tallest *climbable*
+    // one, so a single very tall building no longer forces the whole
+    // route to fail; it just gets detoured around instead.
+    var climbableBuildings = [];
+    var tooTallBuildings = [];
+    buildingList.forEach(function(b){
+      if (b.height + BUILDING_HEIGHT_SAFETY_MARGIN_M > effectiveCeilingM){
+        tooTallBuildings.push(b);
+      } else {
+        climbableBuildings.push(b);
+      }
+    });
+    var maxBuildingHeight = climbableBuildings.reduce(function(m, b){ return Math.max(m, b.height); }, 0);
+
+    const obstacles = hazards.map(function(h){
+      return { lat: h.lat, lng: h.lng, clearance: h.clearance, kind: 'hazard', type: h.type, name: h.name };
+    }).concat(tooTallBuildings.map(function(b){
+      return { lat: b.lat, lng: b.lng, clearance: b.radius + BUILDING_LATERAL_SAFETY_MARGIN_M, kind: 'building', type: 'building', name: null, height: b.height };
+    }));
+
+    const avoidance = computeAvoidanceRoute(startlat, startlng, destlat, destlng, obstacles);
+    const routeDist = avoidance.distance;
+    renderHazardsAndRoute(hazards, buildingList, avoidance.path);
+
+    // The corridor width actually queried grows with route distance
+    // (see corridorHalfWidth), but the avoidance routing itself can
+    // still occasionally swing past it while dodging a cluster of
+    // hazards - flag that so the person knows that stretch wasn't
+    // fully checked, rather than silently trusting it.
+    const hazardHalfWidthUsed = osmData ? osmData.hazardHalfWidthUsed : HAZARD_CORRIDOR_HALF_WIDTH_M;
+    const buildingHalfWidthUsed = osmData ? osmData.buildingHalfWidthUsed : BUILDING_CORRIDOR_HALF_WIDTH_M;
+    const routeDeviationM = maxLateralDeviationM(avoidance.path, startlat, startlng, destlat, destlng);
+    const routeLeftCheckedArea = osmData !== null && routeDeviationM > hazardHalfWidthUsed;
+    const routeLeftCheckedBuildingArea = osmData !== null && routeDeviationM > buildingHalfWidthUsed;
+
+    // Now that we know the actual (possibly detoured) route length,
+    // work out how long each leg takes at every height.
+    timeupdown = []
+    timeupdownback = []
+    timehor = []
+    timehorb = []
+    for (i=0;i<heights.length; i++) {
+        timeupdown[i] = (heights[i]/speedup)+(heights[i]/speeddown)
+        timeupdownback[i] = (heights[i]/speedupback)+(heights[i]/speeddownback)
+        diffangle=(wd[i]-dronedegrees)/180*Math.PI
+        angle = Math.cos(diffangle)*drag
+        timehor[i] = routeDist / (speedhorizontal+ws[i]*angle)
+        timehorb[i] = routeDist / (speedhorizontalback-ws[i]*angle)
     }
 
     // A height isn't flyable if:
-    //  - it's below the minimum clearance above the tallest building
-    //    OSM knows about near this route, or
+    //  - it's below the minimum clearance above the tallest *climbable*
+    //    building OSM knows about near this route (buildings too tall
+    //    to clear within today's effective ceiling were already
+    //    routed around above and don't factor in here), or
     //  - the estimated gust there meets or exceeds the drone's rated
     //    max wind resistance (an airframe limit, same for both legs), or
     //  - the crosswind component of the average wind meets or exceeds
     //    the drone's horizontal speed for that leg - beyond that point
     //    the drone can't hold its course at all, regardless of speed.
-    // Buildings elsewhere along the route are handled by the
-    // horizontal detour above; only ones right at the takeoff/landing
-    // point (which can't be routed around) still raise this floor.
-    var maxBuildingHeight = buildings ? buildings.maxHeight : 0;
-    var minSafeAltitude = maxBuildingHeight > 0 ? (maxBuildingHeight + 20) : 20;
-    var windResistance = parseFloat(document.getElementById('windres').value);
+    var minSafeAltitude = maxBuildingHeight > 0 ? (maxBuildingHeight + BUILDING_HEIGHT_SAFETY_MARGIN_M) : 20;
 
     flyableOut = []
     flyableBack = []
     buildingOk = []
-    windResOk = []
-    crosswindOkOut = []
-    crosswindOkBack = []
     for (i=0;i<heights.length; i++) {
         buildingOk[i] = heights[i] >= minSafeAltitude
-        windResOk[i] = estgust[i] < windResistance
-        crosswindOkOut[i] = speedhorizontal > crosswind[i]
-        crosswindOkBack[i] = speedhorizontalback > crosswind[i]
         flyableOut[i] = buildingOk[i] && windResOk[i] && crosswindOkOut[i]
         flyableBack[i] = buildingOk[i] && windResOk[i] && crosswindOkBack[i]
     }
@@ -1073,7 +1119,21 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
     } else if (buildings.count === 0){
         buildingInfo.innerHTML = "No buildings found near this route in OpenStreetMap, so no extra height is needed for obstacle clearance."
     } else {
-        buildingInfo.innerHTML = "Checked " + buildings.count + " building" + (buildings.count===1?'':'s') + " from OpenStreetMap near this route &mdash; the tallest is about " + maxBuildingHeight.toFixed(0) + " m, so we won't recommend flying below " + minSafeAltitude.toFixed(0) + " m. Buildings are shown in faint blue on the map for reference."
+        if (maxBuildingHeight > 0){
+            buildingInfo.innerHTML = "Checked " + buildings.count + " building" + (buildings.count===1?'':'s') + " from OpenStreetMap near this route &mdash; the tallest one we still climb over is about " + maxBuildingHeight.toFixed(0) + " m, so we won't recommend flying below " + minSafeAltitude.toFixed(0) + " m. Buildings are shown in faint blue on the map for reference."
+        } else {
+            buildingInfo.innerHTML = "Checked " + buildings.count + " building" + (buildings.count===1?'':'s') + " from OpenStreetMap near this route &mdash; none of them need extra height to clear. Buildings are shown in faint blue on the map for reference."
+        }
+
+        if (tooTallBuildings.length > 0){
+            var tallestTooTall = tooTallBuildings.reduce(function(m, b){ return Math.max(m, b.height); }, 0)
+            var ceilingNote = (effectiveCeilingM < MAX_FLIGHT_ALTITUDE_M)
+                ? (' the ' + effectiveCeilingM.toFixed(0) + ' m ceiling that today\'s wind allows (below the usual ' + MAX_FLIGHT_ALTITUDE_M + ' m limit)')
+                : (' the ' + MAX_FLIGHT_ALTITUDE_M + ' m ceiling')
+            var tooTallNote = document.createElement('span')
+            tooTallNote.innerHTML = ' ' + tooTallBuildings.length + ' building' + (tooTallBuildings.length===1?' is':'s are') + ' taller than' + ceilingNote + ' (up to about ' + tallestTooTall.toFixed(0) + ' m) \u2014 climbing over ' + (tooTallBuildings.length===1?'it':'them') + " isn't possible within that limit, so the route is detoured sideways around " + (tooTallBuildings.length===1?'it':'them') + ' instead.'
+            buildingInfo.appendChild(tooTallNote)
+        }
 
         if (routeLeftCheckedBuildingArea){
             var buildingCorridorWarning = document.createElement('span')
