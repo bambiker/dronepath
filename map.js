@@ -189,9 +189,9 @@ function markUnsafe(id, unsafe, reason){
 // corridor). So the actual half-width used per route grows with
 // straight-line distance, capped so the Overpass query never gets
 // huge. See corridorHalfWidth() below.
-var BUILDING_CORRIDOR_HALF_WIDTH_M = 60; // floor - 120 m wide corridor around the route
-var BUILDING_CORRIDOR_MAX_HALF_WIDTH_M = 250;
-var BUILDING_CORRIDOR_DISTANCE_FRACTION = 0.02; // +20 m of half-width per km of route
+var BUILDING_CORRIDOR_HALF_WIDTH_M = 100; // floor - 200 m wide corridor around the route
+var BUILDING_CORRIDOR_MAX_HALF_WIDTH_M = 500;
+var BUILDING_CORRIDOR_DISTANCE_FRACTION = 0.05; // +50 m of half-width per km of route
 var BUILDING_HEIGHT_FALLBACK_M = 7;      // ~2 storeys, used when a building has no height/levels tag
 var BUILDING_TYPE_HEIGHT_M = {
   garage: 3, garages: 3, shed: 3, roof: 3, hut: 3, carport: 3,
@@ -850,8 +850,10 @@ async function calcHeight() {
     // hazards - flag that so the person knows that stretch wasn't
     // fully checked, rather than silently trusting it.
     const hazardHalfWidthUsed = osmData ? osmData.hazardHalfWidthUsed : HAZARD_CORRIDOR_HALF_WIDTH_M;
+    const buildingHalfWidthUsed = osmData ? osmData.buildingHalfWidthUsed : BUILDING_CORRIDOR_HALF_WIDTH_M;
     const routeDeviationM = maxLateralDeviationM(avoidance.path, startlat, startlng, destlat, destlng);
     const routeLeftCheckedArea = osmData !== null && routeDeviationM > hazardHalfWidthUsed;
+    const routeLeftCheckedBuildingArea = osmData !== null && routeDeviationM > buildingHalfWidthUsed;
 
     const d = new Date();
     let hour = d.getUTCHours();
@@ -1040,6 +1042,13 @@ crosswind[i] = ws[i] * Math.abs(Math.sin(diffangle))
         buildingInfo.innerHTML = "No buildings found near this route in OpenStreetMap, so no extra height is needed for obstacle clearance."
     } else {
         buildingInfo.innerHTML = "Checked " + buildings.count + " building" + (buildings.count===1?'':'s') + " from OpenStreetMap near this route &mdash; the tallest is about " + maxBuildingHeight.toFixed(0) + " m, so we won't recommend flying below " + minSafeAltitude.toFixed(0) + " m. Buildings are shown in faint blue on the map for reference."
+
+        if (routeLeftCheckedBuildingArea){
+            var buildingCorridorWarning = document.createElement('span')
+            buildingCorridorWarning.className = 'warning-hint'
+            buildingCorridorWarning.innerHTML = ' The detour around nearby hazards swings about ' + routeDeviationM.toFixed(0) + ' m from the straight line \u2014 further than the ' + buildingHalfWidthUsed.toFixed(0) + ' m either side that was actually checked for buildings, so the recommended height may not account for a taller building further out along that swing.'
+            buildingInfo.appendChild(buildingCorridorWarning)
+        }
     }
     buildingInfo.style.display = 'block'
 
