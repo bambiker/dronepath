@@ -218,7 +218,7 @@ var BUILDING_TYPE_FOOTPRINT_M = {
 };
 var MAX_FLIGHT_ALTITUDE_M = 120;          // ceiling we check up to (matches the heights[] table below)
 var BUILDING_HEIGHT_SAFETY_MARGIN_M = 20; // vertical buffer added on top of a building's height when climbing over it
-var BUILDING_LATERAL_SAFETY_MARGIN_M = 15; // buffer added on top of a too-tall building's footprint when routing around it
+var BUILDING_LATERAL_SAFETY_MARGIN_M = 30; // buffer added on top of a too-tall building's footprint when routing around it
 
 // Places that are risky to overfly: schools, kindergartens, hospitals
 // and playgrounds. Unlike buildings, altitude doesn't make these
